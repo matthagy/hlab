@@ -141,6 +141,9 @@ class FileWrapper(object):
         self.close()
         return False
 
+    def __del__(self):
+        self.close()
+
 
 class Writer(FileWrapper):
     '''Object to for serial writing of objects to an objstream
@@ -210,7 +213,7 @@ class BatchingWriter(Writer):
         # already corrupt at this point
         for op in batch:
             super(BatchingWriter, self).write(op)
-        super(BatchingWriter, self).flush()
+        return super(BatchingWriter, self).flush()
 
     def close(self):
         self.flush()
