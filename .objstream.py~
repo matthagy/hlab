@@ -19,10 +19,14 @@
 ## along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ## ---------------------------------------------------------------------
 
+from __future__ import with_statement
+
 import cPickle as pickle
 import zlib
 import bz2
 from __builtin__ import open as builtin_open
+
+from hlab.pathutils import FilePath
 
 
 def open(filename, mode='r'):
@@ -120,15 +124,25 @@ compressors = dict((name, Compressor(mode, name, compress_func, decompress_func)
 compressor_modes = dict((c.mode_char,c) for c in compressors.itervalues())
 
 
-class Writer(object):
-    '''Object to for serial writing of objects to an objstream
-    '''
+class FileWrapper(object):
 
     def __init__(self, fileobj):
         self.fileobj = fileobj
 
     def close(self):
         self.fileobj.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
+        return False
+
+
+class Writer(FileWrapper):
+    '''Object to for serial writing of objects to an objstream
+    '''
 
     def flush(self):
         self.fileobj.flush()
@@ -226,18 +240,19 @@ class ObjectLocator(object):
         raise CorruptFile("EOF when reading object")
 
 
-class Reader(object):
+class Reader(FileWrapper):
     '''Provides random access to objects in an objstream
     '''
 
     def __init__(self, fileobj):
-        self.fileobj = fileobj
+        super(Reader, self).__init__(fileobj)
         self.obj_locators = []
         self.next_index = 0
         self.seen_end = False
 
     def close(self):
-        self.fileobj.close()
+        super(Reader, self).close()
+        del self.obj_locators
 
     # fileobj API
     def read(self):
@@ -348,7 +363,11 @@ class Reader(object):
         locator = self.get_locator(self.normalize_index(index))
         if not locator:
             raise EOFError
-        return locator.read_object(self.fileobj)
+        try:
+            return locator.read_object(self.fileobj)
+        except IOError, e:
+            self.handle_io_error(e)
+            raise EOFError
 
     def normalize_index(self, index):
         '''index object through same API as sequences (ie. negative
@@ -439,4 +458,36 @@ class Reader(object):
         if self.ignore_corrupt_entries:
             return None
         raise CorruptFile("there are insufficient bytes to read next object from file")
+
+    def handle_io_error(self, e):
+        if self.ignore_corrupt_entries:
+            return None
+        raise CorruptFilep(str(e))
+
+
+def open_cached_locators(filepath, cache_path=None, ignore_corrupt_entries=False):
+    filepath = FilePath(filepath)
+    fp = open(filepath)
+    if cache_path is None:
+        cache_path = FilePath(filepath + '.locs')
+    cache_path = FilePath(cache_path)
+    fp.ignore_corrupt_entries = ignore_corrupt_entries
+    if cache_path.exists() and cache_path.mtime() > filepath.mtime():
+        with open(cache_path, 'r') as cache_fp:
+            fp.obj_locators = cache_fp.read()
+    else:
+        fp.read_all_locators()
+        try:
+            with open(cache_path, 'w') as cache_fp:
+                cache_fp.pickle_protocol = 2
+                cache_fp.write(fp.obj_locators)
+        except:
+            try:
+                cache_path.unlink()
+            except OSError:
+                pass
+            raise
+    return fp
+
+
 

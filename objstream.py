@@ -334,6 +334,7 @@ class Reader(FileWrapper):
                 break
             yield op
             inx += step
+            self.set_index(inx)
 
     @staticmethod
     def step_error(start, stop, step):
