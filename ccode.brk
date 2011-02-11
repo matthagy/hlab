@@ -1,0 +1,148 @@
+
+(import 
+ sys :and
+ :from brooke.xbrooke.lib.debug :import *)
+
+(setq NEWLINE "\n"
+      END_STMT ";"
+      START_BLOCK "{"
+      END_BLOCK "}"
+      START_GROUP "("
+      END_GROUP ")")
+
+(defun make-coder (&keys emit (indent (* " " 4)))
+  (obj :emit (or emit sys.stdout.write)
+       :indent indent
+       :indent-level 0
+       :line-started nil))
+
+(defun make-coder-to-file (fp &remaining-keys keys)
+  (make-coder fp.write &remaining-keys keys))
+
+(defun make-coder-to-filepath (filepath &remaining-keys keys)
+  (make-coder-to-file (open filepath "w") &remaining-keys keys))
+
+(defun coder-indent (coder)
+  (incf coder.indent-level))
+
+(defun coder-dedent (coder)
+  (assert coder.indent-level)
+  (decf coder.indent-level))
+
+(defmacro with-indent (coder-form &body body)
+  (with-gensyms (coder)
+    `(let ((,coder ,coder-form))
+       (,coder-indent ,coder)
+       (prog1 ,body
+         (,coder-dedent ,coder)))))
+
+(defun coder-write (coder expr &rest args)
+  (unless coder.line-started
+    (coder.emit (* coder.indent coder.indent-level))
+    (setf coder.line-started t))
+  (coder.emit (if args 
+                  (x!format expr &rest args)
+                  expr)))
+
+(defun coder-writeline (coder &keys (line "") &rest args)
+  (coder-write coder line &rest args)
+  (coder.emit NEWLINE)
+  (setf coder.line-started nil))
+
+(defun coder-writestmt (coder line &rest args)
+  (coder-writeline coder (+ line END_STMT) &rest args))
+
+(defun coder-startblock (coder line &rest args)
+  (coder-writeline coder (+ line START_BLOCK) &rest args)
+  (coder-indent coder))
+
+(defun coder-endblock (coder)
+  (coder-dedent coder)
+  (coder-writeline coder END_BLOCK))
+
+(defmacro with-block (coder-form (&keys (line "") &rest-clist args)
+                      &body body)
+  (with-gensyms (coder)
+    `(let ((,coder ,coder-form))
+       (,coder-startblock ,coder ,line ,@args)
+       (prog1 ,body
+         (,coder-endblock ,coder)))))
+
+(defun coder-startgroup (coder)
+  (coder-write START_GROUP))
+
+(defun coder-endgroup (coder)
+  (coder-write END_GROUP))
+
+(defmacro with-group (coder-form &body body)
+  (with-gensyms (coder)
+    `(let ((,coder ,coder-form))
+       (,coder-startgroup ,coder)
+       (prog1 ,body
+         (,coder-endgroup ,coder)))))
+
+(setq coder-syms '(coder-indent coder-dedent with-indent
+                   coder-write coder-writeline coder-writestmt
+                   coder-startblock coder-endblock with-block
+                   coder-startgroup coder-endgroup with-group))
+
+(setq coder-gensym (gensym "coder"))
+
+(setq coder-macrolet-template
+      (let ((gbls (globals)))
+        (mapcar (lambda (sym)
+                  (let ((op (item gbls (symbol-name sym))))
+                    (when (.startswith (symbol-name sym)
+                                       "coder-")
+                      (setq sym (symbol (.replace (symbol-name sym)
+                                                  "coder-" ""))))
+                    `(,sym (&rest-clist args)
+                           `(,,op ,',coder-gensym ,@args))))
+                coder-syms)))
+
+(defmacro with-coding (coder-form &rest-clist body)
+  `(let ((,coder-gensym ,coder-form)) 
+     (macrolet ,coder-macrolet-template
+       ,@body)))
+
+(defnode n-real
+  :class expression
+  (value float-p))
+
+(defnode n-int
+  :class expression
+  (value int-p))
+
+(defnode n-string
+  :class expression
+  (value string-p))
+
+(defnode n-symbol
+  :class assignable
+  (sym symbol-p))
+
+(defnode n-attribute
+  :class assignable
+  :precidence 1
+  :associativity left-to-right
+  (obj expression-p)
+  (sym symbol-p))
+
+
+
+(defexpression binop 
+  :class expression
+  (op (&oneof '(+ - * / % >> << ^ & \|)))
+  (lop expression-p)
+  (rop expression-p))
+
+
+(with-coding (make-coder)
+  (writeline)
+  (with-block ("for(%s; %s; %s)" "i=0" "i<10" "i++")
+    (writeline)
+    (with-block ("for(j=i; j<10; j++)")
+      (writestmt "printf(\"stuff %s\\n\")" "i*j")
+      (writeline)
+      (writestmt "doshit(%s,%s)" "i" "j"))))
+

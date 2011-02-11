@@ -1,0 +1,5 @@
+
+from functools import partial
+
+def identity(x): return x
+def noop(x): return None

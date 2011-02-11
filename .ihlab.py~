@@ -1,0 +1,16 @@
+'''interfaces
+'''
+
+from zope.interface import Interface, implements
+from twisted.python.components import registerAdapter
+
+
+class IUncertainNumber(Interface):
+    '''
+    '''
+
+class ISimSet(Interface):
+    '''
+    '''
+
+

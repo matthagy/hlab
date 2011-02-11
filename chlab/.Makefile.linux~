@@ -1,0 +1,23 @@
+# -*-mode:makefile-*-
+
+all: libcext.so
+
+GCC = gcc
+COMMON_OPTIONS = -DMACOSX -Wall -O2
+BUILD_LIB = $(GCC) $(COMMON_OPTIONS) -fPIC -shared
+BUILD_OBJ = $(GCC) $(COMMON_OPTIONS) -fPIC -shared -finline-functions -std=c99 \
+	-funsafe-math-optimizations
+
+COMMON_DEPS = Makefile.linux includes.h opt.h mem.h debug.h
+
+lib%.so: %.o mem.o debug.o
+	$(BUILD_LIB) $< -o $@ mem.o debug.o
+
+%.o: %.c $(COMMON_DEPS)
+	$(BUILD_OBJ) -c $< -o $@
+
+clean:
+	rm *.so *.o
+
+install: libcext.so
+	cp libcext.so ../../lib/

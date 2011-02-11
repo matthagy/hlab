@@ -1,0 +1,32 @@
+;; Writes Python bytecode for validating domains using brooke
+
+(import 
+ from hlab.infinity oo)
+
+(defun compile_to_function (domain)
+  (x!bompile `(lambda (domain)
+                (progn ,@(make_checker_forms domain 'domain)))))
+
+(defun make_checker_forms (domain checksym)
+  "generate sexps to check if a value is in a domain"
+  (let (acc)
+    (for (pair domain.pairs (when acc
+                              `(bool (or ,@acc))))
+      (push (code_pair_checker pair checksym) acc))))
+
+(defun code_pair_checker (pair checksym)
+  "write code check of value is within this pair"
+  `(and ,(code_bound_checker pair.start checksym '< '<= (neg oo))
+        ,(code_bound_checker pair.end checksym '> '>= oo)))
+
+(defun code_bound_checker (bound checksym ex_check in_check exclude)
+  "helper to code for checking single boundary"
+  (if (eq bound.value exclude)
+      t
+      `(,(if bound.inclusive in_check ex_check)
+         ,bound.value ,checksym)))
+
+
+
+
+

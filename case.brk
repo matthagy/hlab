@@ -1,0 +1,164 @@
+(bs!import dis)
+(say (full-macroexpand
+      '(bs!case 3
+        (0 '0)
+        (1 '1)
+        (2 '2)
+        (3 '3)
+        (4 '4)
+        ((5 6 7 8) '5678)
+        (otherwise 'otherwise))))
+
+(dis.dis 
+     (bs!lambda ()
+       (bs!case 3
+         (0 '0)
+         (1 '1)
+         (2 '2)
+         (3 '3)
+         (4 '4)
+         ((5 6 7 8) '5678)
+         (otherwise 'otherwise))))
+
+(let ((#:case110 3)) 
+  (if (eq #:case110 0) 
+      (progn (%quote 0)) 
+      (if (eq #:case110 1) 
+          (progn (%quote 1)) 
+          (if (eq #:case110 2) 
+              (progn (%quote 2)) 
+              (if (eq #:case110 3) 
+                  (progn (%quote 3)) 
+                  (if (eq #:case110 4) 
+                      (progn (%quote 4)) 
+                      (if (or (eq #:case110 5) 
+                              (eq #:case110 6) 
+                              (eq #:case110 7) 
+                              (eq #:case110 8)) 
+                          (progn (%quote 5678)) 
+                          (progn (%quote otherwise)))))))))
+
+(%let ((#:case110 3)) 
+  (%if (%== #:case110 0) 
+    (%progn (%quote 0)) 
+    (%if (%== #:case110 1) 
+       (%progn (%quote 1)) 
+       (%if (%== #:case110 2) 
+          (%progn (%quote 2)) 
+          (%if (%== #:case110 3) 
+             (%progn (%quote 3)) 
+             (%if (%== #:case110 4) 
+                (%progn (%quote 4)) 
+                (%if 
+                 (%let ((#:or111 (%== #:case110 5)))
+                   (%if #:or111 #:or111 
+                     (%let ((#:or112 (%== #:case110 6))) 
+                       (%if #:or112 #:or112 
+                         (%let ((#:or113 (%== #:case110 7)))
+                           (%if #:or113 #:or113 
+                             (%let ((#:or114 (%== #:case110 8)))
+                               (%if #:or114 #:or114 nil))))))))
+                 (%progn (%quote 5678)) 
+                 (%progn (%quote otherwise)))))))))
+
+
+"
+ 18           0 LOAD_CONST               1 (3)
+              3 STORE_FAST               0 (#:case115)
+              6 LOAD_FAST                0 (#:case115)
+              9 LOAD_CONST               2 (0)
+             12 COMPARE_OP               2 (==)
+             15 JUMP_IF_FALSE            7 (to 25)
+             18 POP_TOP             
+
+ 19          19 LOAD_CONST               2 (0)
+             22 JUMP_FORWARD           202 (to 227)
+        >>   25 POP_TOP             
+             26 LOAD_FAST                0 (#:case115)
+             29 LOAD_CONST               3 (1)
+             32 COMPARE_OP               2 (==)
+             35 JUMP_IF_FALSE            7 (to 45)
+             38 POP_TOP             
+
+ 20          39 LOAD_CONST               3 (1)
+             42 JUMP_FORWARD           182 (to 227)
+        >>   45 POP_TOP             
+             46 LOAD_FAST                0 (#:case115)
+             49 LOAD_CONST               4 (2)
+             52 COMPARE_OP               2 (==)
+             55 JUMP_IF_FALSE            7 (to 65)
+             58 POP_TOP             
+
+ 21          59 LOAD_CONST               4 (2)
+             62 JUMP_FORWARD           162 (to 227)
+        >>   65 POP_TOP             
+             66 LOAD_FAST                0 (#:case115)
+             69 LOAD_CONST               1 (3)
+             72 COMPARE_OP               2 (==)
+             75 JUMP_IF_FALSE            7 (to 85)
+             78 POP_TOP             
+
+ 22          79 LOAD_CONST               1 (3)
+             82 JUMP_FORWARD           142 (to 227)
+        >>   85 POP_TOP             
+             86 LOAD_FAST                0 (#:case115)
+             89 LOAD_CONST               5 (4)
+             92 COMPARE_OP               2 (==)
+             95 JUMP_IF_FALSE            7 (to 105)
+             98 POP_TOP             
+
+ 23          99 LOAD_CONST               5 (4)
+            102 JUMP_FORWARD           122 (to 227)
+        >>  105 POP_TOP             
+            106 LOAD_FAST                0 (#:case115)
+            109 LOAD_CONST               6 (5)
+            112 COMPARE_OP               2 (==)
+            115 STORE_FAST               1 (#:or116)
+            118 LOAD_FAST                1 (#:or116)
+            121 JUMP_IF_FALSE            7 (to 131)
+            124 POP_TOP             
+            125 LOAD_FAST                1 (#:or116)
+            128 JUMP_FORWARD            82 (to 213)
+        >>  131 POP_TOP             
+            132 LOAD_FAST                0 (#:case115)
+            135 LOAD_CONST               7 (6)
+            138 COMPARE_OP               2 (==)
+            141 STORE_FAST               2 (#:or117)
+            144 LOAD_FAST                2 (#:or117)
+            147 JUMP_IF_FALSE            7 (to 157)
+            150 POP_TOP             
+            151 LOAD_FAST                2 (#:or117)
+            154 JUMP_FORWARD            56 (to 213)
+        >>  157 POP_TOP             
+            158 LOAD_FAST                0 (#:case115)
+            161 LOAD_CONST               8 (7)
+            164 COMPARE_OP               2 (==)
+            167 STORE_FAST               3 (#:or118)
+            170 LOAD_FAST                3 (#:or118)
+            173 JUMP_IF_FALSE            7 (to 183)
+            176 POP_TOP             
+            177 LOAD_FAST                3 (#:or118)
+            180 JUMP_FORWARD            30 (to 213)
+        >>  183 POP_TOP             
+            184 LOAD_FAST                0 (#:case115)
+            187 LOAD_CONST               9 (8)
+            190 COMPARE_OP               2 (==)
+            193 STORE_FAST               4 (#:or119)
+            196 LOAD_FAST                4 (#:or119)
+            199 JUMP_IF_FALSE            7 (to 209)
+            202 POP_TOP             
+            203 LOAD_FAST                4 (#:or119)
+            206 JUMP_FORWARD             4 (to 213)
+        >>  209 POP_TOP             
+            210 LOAD_CONST              10 (nil)
+        >>  213 JUMP_IF_FALSE            7 (to 223)
+            216 POP_TOP             
+
+ 24         217 LOAD_CONST              11 (5678)
+            220 JUMP_FORWARD             4 (to 227)
+        >>  223 POP_TOP             
+
+ 25         224 LOAD_CONST              12 (symbol(otherwise))
+        >>  227 RETURN_VALUE        
+
+"

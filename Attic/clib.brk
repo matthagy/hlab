@@ -1,0 +1,459 @@
+
+(import
+ :import ctypes :as C :and
+ :from collections :import defaultdict :and
+ :from functools :import partial :and
+ :from numpy :import ndarray array linspace :and
+ :from HH2.pathutils :import FilePath :and
+ :from brooke.xbrooke.lib.debug :import * :and
+ :from brooke.bompiler.trans :import NotAvailable :and
+ :import new)
+
+(let ((gbls (globals)))
+  (for (s '(c-int c-uint c-long c-ulong c-float c-double c-void-p))
+    (setf (item gbls (symbol-name s))
+          (getattr C (.replace (symbol-name s)
+                               "-" "_")))))
+
+(setq c-void None)
+
+;; utilities
+
+(defun as-tuple (op)
+  (try-catch 
+   (tuple op)
+   ((&oneof TypeError ValueError AttributeError)
+    (make-tuple op))))
+
+(defmacro trypop (dct-form key-form 
+                  ((binding) &body success-form) &body err-form)
+  (with-gensyms (nokey)
+  `(let ((,binding (try-catch
+                    (.pop ,dct-form ,key-form)
+                    (,KeyError ',nokey))))
+     (if (is ,binding ',nokey)
+         ,err-form
+         ,success-form))))
+
+(defmacro popor (dct-form key-form &rest-clist else-form)
+  (with-gensyms (binding)
+    `(trypop ,dct-form ,key-form 
+             ((,binding) ,binding)
+             ,@else-form)))
+
+;; type adaptors
+
+(setq converters (defaultdict list))
+(defun register-cadaptor (c-type tp adapter)
+  (for (tp (as-tuple tp))
+    (.insert (item converters c-type) 
+             0 (make-tuple tp adapter))))
+
+(defun convert-ctype (c-type op)
+  (cond ((isinstance op c-type)
+         op)
+        (t 
+         (for ((tp cnv) (converters.get c-type nil))
+           (when (isinstance op tp)
+             (return (cnv c-type op))))
+         (raise1 (TypeError (x!format "can convert %r to %r" 
+                                      (type op)
+                                      c-type))))))
+
+(defun adapt-number (py-type c-type op &keys (epsilon 0))
+  (setq op (py-type op))
+  (let ((cop (c-type op)))
+    (unless (<= (abs (- op cop.value))
+                epsilon)
+      (raise1 (ValueError (x!format "cannot represent %r with %s" op c-type))))
+    cop))
+
+(setq float-epsilon (power 2 (neg 18)))
+(register-cadaptor c-int (clist int long) (partial adapt-number int))
+(register-cadaptor c-uint (clist int long) (partial adapt-number int))
+(register-cadaptor c-long (clist int long) (partial adapt-number int))
+(register-cadaptor c-ulong (clist int long) (partial adapt-number int))
+(register-cadaptor c-float (clist int long float) (partial adapt-number float 
+                                                           :epsilon float-epsilon))
+(register-cadaptor c-double (clist int long float) (partial adapt-number float 
+                                                            :epsilon float-epsilon))
+(register-cadaptor c-void-p (clist int long) (lambda (c-type op) 
+                                               (C.cast op C.c_void_p)))
+
+
+;; structures
+
+(defmacro defcstruct (&env env name &rest-clist field-defs &remaining-keys keys)
+  (flet ((pop-func (key default)
+           (trypop keys (symbol-name key)
+                   ((v) (destructuring-bind
+                              (args &rest-clist body) v
+                          (x!bompile `(named-lambda ,key ,args ,@body)
+                                     :env env)))
+                   default)))
+    (let ((constructor (pop-func 'constructor default-cstruct-consturctor))
+          (printer (pop-func 'printer default-cstruct-printer))
+          (doc (when (stringp (car field-defs))
+                 (pop field-defs)))
+          (extra (popor keys "extra")))
+      (assert (not keys))
+      (destructuring-bind 
+            (fields validators)
+          (parse-field-defs env field-defs)
+        `(defpyclass ,name (,C.Structure)
+           (__name__ ,(symbol-name name))
+           (__doc__ ,doc)
+           (_fields_ ,fields)
+           (__setattr__ ,cstruct-setattr)
+           (*validators-map* ,validators)
+           (*ctypes-map* ,(dict fields))
+           (__new__ ,constructor)
+           (__init__ ,dummy-init)
+           (__str__ ,printer)
+           ,@extra)))))
+
+(defun dummy-init (&rest r &remaining-keys k)
+  None)
+
+(defun parse-field-defs (env defs)
+  (let ((fields (list))
+        (validators (dict)))
+    (for ((ctype &rest-clist rest) defs (make-tuple fields validators))
+      (setq ctype (x!eval ctype :env env))
+      (while (is (car rest)
+                 '*)
+        (setq ctype (C.POINTER ctype))
+        (pop rest))
+      (for (field rest)
+        (destructuring-bind 
+              (name validator)
+            (parse-field env ctype field)
+          (fields.append (make-tuple name ctype))
+          (setf (item validators name) validator))))))
+
+(defun parse-field (env ctype field)
+  (when (symbolp field)
+    (setq field `(,field)))
+  (destructuring-bind 
+        (name &keys validator) field
+    (make-tuple (symbol-name name)
+                (cond ((null validator)
+                       default-validator)
+                      ((and (consp validator)
+                            (is (car validator)
+                                'lambda))
+                       ;; rewrite lambdas to automatically convert
+                       (destructuring-bind 
+                             (drop (&rest-clist args) &body body)
+                           validator
+                           (unless (cdr args)
+                             (push (gensym "drop-ctype") 
+                                   args))
+                           (unless (cddr args)
+                             (push (gensym "drop-name")
+                                   args))
+                           (unless (cdddr args)
+                             (push (gensym "drop-self")
+                                   args))
+                           (assert (eq (listlen args) 4))
+                           (x!bompile `(lambda ,args
+                                         (,convert-ctype ,ctype
+                                                         ,body))
+                                      :env env)))
+                      (t
+                       (x!eval validator :env env))))))
+
+(defun default-validator (self name ctype value)
+  (convert-ctype ctype value))
+
+(defun readonly (self name ctype value)
+  (raise1 (ValueError (x!format "%s is readonly" name))))
+
+(defun Structure-setattr (self name value)
+  (C.Structure.__setattr__ self (if (symbolp name)
+                                      (symbol-name name)
+                                      name) value))
+
+(defun cstruct-setattr (self name value)
+  (let ((converter (self.*validators-map*.get name nil)))
+    (when converter
+      (setq value (converter self name 
+                             (item self.*ctypes-map* name)
+                             value)))
+    (Structure-setattr self name value)))
+
+(defun default-cstruct-consturctor (cls &remaining-keys keys)
+  (let ((self (C.Structure.__new__ cls)))
+    (for ((k v) (keys.iteritems) self)
+      (setattr self k v))))
+
+(defun default-cstruct-printer (self)
+  (C.Structure.__str__ self))
+
+(defun cast-2-carray (ctype op)
+  (let ((c (op.ctypes.data_as ctype)))
+    c))
+
+(defmacro defcvector (&env env name c-type)
+  (setq c-type (x!eval c-type :env env))
+  `(progn 
+     (defcstruct ,name
+         (,c-type x y z)
+       :constructor ((cls &rest args)
+                     (when (eq (len args) 1)
+                       (setq args (item args 0)))
+                     (destructuring-bind (x y z) args
+                       (default-cstruct-consturctor 
+                           cls :x x :y y :z z)))
+       :printer ((self)
+                 (x!format "<%r %r %r>" self.x self.y self.z)))
+     (,register-cadaptor 
+      ,name
+      ,(make-tuple list cons tuple ndarray) 
+      (lambda (c-type &rest args) 
+        (,name &rest args)))))
+
+(defmacro def2Dcvector (&env env name c-type)
+  (setq c-type (x!eval c-type :env env))
+  `(progn 
+     (defcstruct ,name
+         (,c-type x y z)
+       :constructor ((cls &rest args)
+                     (when (eq (len args) 1)
+                       (setq args (item args 0)))
+                     (destructuring-bind (x y) args
+                       (default-cstruct-consturctor 
+                           cls :x x :y y)))
+       :printer ((self)
+                 (x!format "<%r %r>" self.x self.y)))
+     (,register-cadaptor 
+      ,name
+      ,(make-tuple list cons tuple ndarray) 
+      (lambda (c-type &rest args) 
+        (,name &rest args)))))
+
+(macrolet ((def (&rest names)
+             `(progn ,@(mapseq (lambda (csym) 
+                                 `(progn 
+                                    (defcvector ,(symbol (+ (symbol-name csym) "-vector"))
+                                        ,csym)
+                                    (def2Dcvector ,(symbol (+ (symbol-name csym) "-2D-vector"))
+                                        ,csym)))
+                               names))))
+  (def c-int c-double))
+
+(setq arefs (list))
+
+(defmacro defcarray (&env env name c-type)
+  (setq c-type (x!eval c-type :env env))
+  `(progn
+     (defcstruct ,name
+         (c-int (size :validator ,readonly))
+       (,(C.POINTER c-type) 
+         (data :validator (lambda (self name c-type op)
+                            (setq op (array op ,c-type :copy 0 :ndmin 1))
+                            (assert (,eq (,len op.shape)
+                                         1))
+                            (,Structure-setattr self 'size 
+                                                (,convert-ctype ,c-int (len op)))
+                            (,arefs.append op)
+                            (,cast-2-carray ,(C.POINTER c-type) op))))
+       :constructor ((cls seq)
+                     (let ((self (,default-cstruct-consturctor
+                                     cls :data seq)))
+                       self))
+       :printer ((self)
+                 (x!format "#<%s @ %s size %d>" 
+                           ,(symbol-name name) self.data self.size)))
+     (,register-cadaptor ,name ,(make-tuple ndarray list tuple) 
+                         (lambda (ctype seq) (,name seq)))
+     (,register-cadaptor ,name ,cons 
+                         (lambda (c-type seq) (,name (list seq))))))
+
+(macrolet ((def (&rest names)
+             `(progn ,@(mapseq (lambda (csym) 
+                                 `(defcarray ,(symbol (+ (symbol-name csym) "-array"))
+                                      ,csym))
+                               names))))
+  (def c-int c-double c-int-vector c-double-vector))
+
+(defmacro docptr ((place ptr-form len-form &body retform &remaining-keys keys) 
+                   &rest-clist body)
+  (let ((index-sym (cond ((in "index" keys)
+                          (keys.pop "index"))
+                         (t (gensym "index")))))
+    (assert (not keys))
+    (with-gensyms (ptr-sym)
+      `(let ((,ptr-sym ,ptr-form))
+         (dotimes (,index-sym ,len-form ,retform)
+           (let ((,place (item ,ptr-sym ,index-sym)))
+             ,@body))))))
+
+(defmacro docarry ((place array-form &body retform &remaining-keys keys) 
+                   &rest-clist body)
+  (let ((index-sym (cond ((in "index" keys)
+                          (keys.pop "index"))
+                         (t (gensym "index")))))
+    (assert (not keys))
+    (with-gensyms (array-sym)
+      `(let ((,array-sym ,array-form))
+         (docptr (,place (attr ,array-sym data) (attr ,array-sym size)
+                         ,retform :index ,index-sym)
+                 ,@body)))))
+
+(defun carray-as-array (carry)
+  (let* ((acc (list))
+         (emit acc.append))
+    (docarry (el carry (array acc))
+       (emit el))))
+
+(defcstruct c-linterp-table
+  (c-double xmin xprec)
+  (c-double-array table)
+  :constructor ((cls xmin xprec table)
+                (default-cstruct-consturctor
+                    cls :xmin xmin :xprec xprec :table table))
+  :printer ((self)
+            (x!format "#<linterp xmin %r xprec %3g size %d>"
+                      self.xmin self.xprec self.table.size)))
+
+(defun make-c-linterp-table (func &keys 
+                            (xmin 0) (xmax 1)
+                            (nbins 100)
+                            (style 'averaging)
+                            )
+  (let ((prec (/ (- xmax xmin)
+                 (1- nbins))))
+    (c-linterp-table
+     xmin prec 
+    (ecase style
+       (averaging (/ (array 
+                      (map func 
+                           (linspace xmin (+ xmax prec) (1+ nbins))))
+                     2))
+       (weighting (map func 
+                       (linspace xmin (+ xmax prec) (1+ nbins))))))))
+
+;; library wrapper
+
+(defmacro deflib (&env env name &rest defs &remaining-keys keys)
+  (let ((dct (dict)))
+    (flet ((evalit (form)
+             (x!eval form :env env))
+           (setdct (name value &keys src-form)
+             (when (symbolp name)
+               (setq name (symbol-name name)))
+             (assert (stringp name))
+             (when (in name dct)
+               (env.syntaxError src-form "multiple bindings for %s" name))
+             (setf (item dct name)
+                   value)))
+      (let ((filepath (FilePath 
+                       (trypop keys "filepath"
+                               ((v) (evalit v))
+                               (let ((basename (x!format "%s.so" (symbol-name name)))
+                                     (filepath 
+                                      (or (trycatch 
+                                           (env.compileTimeResolve (env.translate '__file__))
+                                           (NotAvailable))
+                                          env.filename)))
+                                 (cond (filepath
+                                        (.sibling (FilePath filepath) 
+                                                  basename))
+                                       (t basename))))))
+            (symbol-translator (trypop keys "symbol-translator"
+                                       ((v) (evalit v))
+                                       identity)))
+        (assert (not keys))
+        (assert (filepath.exists))
+        (let ((lib (C.CDLL (str filepath)))
+              data funcs)
+          (for (def defs)
+            (assert (consp def))
+            (cond ((is (car def)
+                       ':data)
+                   (destructuring-bind 
+                         (c-type &rest-clist vars) (cdr def)
+                     (setq c-type (evalit c-type))
+                     (while (is (car vars)
+                                '*)
+                       (setq c-type (C.POINTER c-type))
+                       (pop vars))
+                     (for (brksym vars)
+                       (push (clist brksym c-type)
+                             data)
+                       (setdct brksym (make-lib-accessor lib c-type brksym 
+                                                         (symbol-translator brksym))
+                                     def))))
+                  (t
+                   (destructuring-bind
+                         (r-type brksym args) def
+                     (setq r-type (evalit r-type))
+                     (setq args (mapcar evalit args))
+                     (push (clist 
+                            brksym
+                            (setdct brksym
+                                    (make-lib-function 
+                                     lib r-type args brksym
+                                     (symbol-translator brksym))))
+                           funcs)))))
+          (setdct 'clib lib)
+          (setdct '*data* data)
+          (setdct '*funcs* funcs)
+          `(setq ,name ,((new.classobj 
+                              (symbol-name name)
+                              (make-tuple object)
+                              dct))))))))
+
+(defun make-lib-accessor (lib c-type brksym csym)
+  (let ((cvalue (c-type.in_dll lib (symbol-name csym))))
+    (cond ((issubclass c-type C.Structure)
+           (property (lambda (self) cvalue)
+                     (lambda (self value)
+                       (setq value (convert-ctype c-type value))
+                       (for ((name _) c-type._fields_)
+                         (Structure-setattr cvalue name (getattr value name))))))
+          ((issubclass c-type C._Pointer)
+           (let ((pp (C.pointer cvalue)))
+             (property (lambda (self) cvalue)
+                       (lambda (self value)
+                         (when (isinstance value ndarray)
+                           (setq value (value.ctypes.data_as c-type)))
+                         (setf (item pp 0) value)))))
+          (t 
+           (property (lambda (self) cvalue.value)
+                     (lambda (self value)
+                       (setf cvalue.value (attr (convert-ctype c-type value)
+                                                value))))))))
+
+(defun make-lib-function (lib r-type args brksym csym)
+  (let ((cfunc (getattr lib (symbol-name csym))))
+    (setf cfunc.restype r-type)
+    (setf cfunc.argtypes (list args))
+    (let (poscnvs)
+      (for ((i argtype) (enumerate args))
+        (when (issubclass argtype C.Structure)
+          (push (clist i argtype)
+                poscnvs)))
+      (cond ((null poscnvs)
+             cfunc)
+            (t
+             (let (ll-syms call-forms
+                   (posmap (dict poscnvs)))
+               (for ((i argtype) (enumerate args))
+                 (let ((gs (gensym (x!format "arg%d" i))))
+                   (push gs ll-syms)
+                   (push (cond ((in i posmap)
+                                `(,convert-ctype ,argtype ,gs))
+                               (t 
+                                gs))
+                         call-forms)))
+               (x!bompile `(lambda ,(reverse ll-syms)
+                             (,cfunc ,@(reverse call-forms))))))))))
+
+(defmacro with-lib-slots (&env env lib &body body)
+  (setq lib (x!eval lib :env env))
+  `(with-slots ,(append (mapcar car lib.*data*)
+                        (mapcar car lib.*funcs*))
+       ,lib
+       ,body))

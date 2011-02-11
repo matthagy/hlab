@@ -1,0 +1,17 @@
+(defun make_poly_eval_form (poly)
+  (let (acc)
+    (for ((n A) (poly.terms.iteritems) acc)
+      (when A
+        (let ((term (if n
+                        `(multiply ,A 
+                                   ,(cond 
+                                     ((eq n 1) 'x)
+                                     ;; multiplication isn't faster than power with Python
+                                     ;; overhead, but may avoid an additional constant in
+                                     ;; function object
+                                     ((eq n 2) '(multiply x x))
+                                     (t        `(power x ,n))))
+                        A)))
+          (ass acc (if acc
+                       `(add ,acc ,term)
+                       term)))))))
