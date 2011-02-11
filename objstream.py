@@ -29,16 +29,18 @@ from __builtin__ import open as builtin_open
 from hlab.pathutils import FilePath
 
 
-def open(filename, mode='r'):
+def open(filename, mode='r', **kwds):
     '''open a file for writing/reading objects
        return the proper file-like object
     '''
     if mode=='r':
-        return Reader(builtin_open(filename, 'rb'))
+        return Reader(builtin_open(filename, 'rb'), **kwds)
     elif mode=='w':
-        return Writer(builtin_open(filename, 'wb'))
+        return (BatchingWriter if 'batch_size' in kwds else
+                Writer)(builtin_open(filename, 'wb'), **kwds)
     elif mode=='a':
-        return Writer(builtin_open(filename, 'ab'))
+        return (BatchingWriter if 'batch_size' in kwds else
+                Writer)(builtin_open(filename, 'ab'), **kwds)
     else:
         raise ValueError('bad mode %r' % (mode,))
 
@@ -185,6 +187,32 @@ class Writer(FileWrapper):
             compressor = compressors[compressor]
         assert isinstance(compressor, Compressor)
         return compressor
+
+
+class BatchingWriter(Writer):
+
+    def __init__(self, fileobj, batch_size=10):
+        super(BatchingWriter, self).__init__(fileobj)
+        self.batch_size = batch_size
+        self.acc_batch = []
+
+    def write(self, obj):
+        self.acc_batch.append(obj)
+        if len(self.acc_batch) == self.batch_size:
+            self.flush()
+
+    def flush(self):
+        batch = self.acc_batch
+        self.acc_batch = []
+        # could lose elements if error in write
+        # likely not worth guarding against as files is likely
+        # already corrupt at this point
+        for op in batch:
+            super(BatchingWriter, self).write(op)
+
+    def close(self):
+        self.flush()
+        super(BatchingWriter, self).close()
 
 
 class CorruptFile(Exception):
