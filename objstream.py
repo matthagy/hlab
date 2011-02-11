@@ -193,6 +193,7 @@ class BatchingWriter(Writer):
 
     def __init__(self, fileobj, batch_size=10):
         super(BatchingWriter, self).__init__(fileobj)
+        assert batch_size >= 1
         self.batch_size = batch_size
         self.acc_batch = []
 
@@ -209,6 +210,7 @@ class BatchingWriter(Writer):
         # already corrupt at this point
         for op in batch:
             super(BatchingWriter, self).write(op)
+        super(BatchingWriter, self).flush()
 
     def close(self):
         self.flush()
