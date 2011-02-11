@@ -1,9 +1,0 @@
-
-from Gnuplot import Gnuplot
-
-class PlottingMixin(object):
-
-    def plot(self, persist=True, **kwds):
-        gp = Gnuplot.Gnuplot(persist=persist)
-        gp.plot(self.gnuplot_item(**kwds))
-        return gp
