@@ -130,9 +130,12 @@ class FileWrapper(object):
 
     def __init__(self, fileobj):
         self.fileobj = fileobj
+        self.closed = False
 
     def close(self):
-        self.fileobj.close()
+        if not self.closed:
+            self.fileobj.close()
+            self.closed = True
 
     def __enter__(self):
         return self
@@ -144,16 +147,22 @@ class FileWrapper(object):
     def __del__(self):
         self.close()
 
+    def ensure_not_closed(self):
+        if self.closed:
+            raise IOError("performing operation on a closed object stream")
+
 
 class Writer(FileWrapper):
     '''Object to for serial writing of objects to an objstream
     '''
 
     def flush(self):
+        self.ensure_not_closed()
         self.fileobj.flush()
         return self
 
     def write(self, op):
+        self.ensure_not_closed()
         compressor, bytes = self.serialize(op)
         #rollback partial writes
         current = self.fileobj.tell()
@@ -201,11 +210,13 @@ class BatchingWriter(Writer):
         self.acc_batch = []
 
     def write(self, obj):
+        self.ensure_not_closed()
         self.acc_batch.append(obj)
         if len(self.acc_batch) == self.batch_size:
             self.flush()
 
     def flush(self):
+        self.ensure_not_closed()
         batch = self.acc_batch
         self.acc_batch = []
         # could lose elements if error in write
@@ -216,7 +227,10 @@ class BatchingWriter(Writer):
         return super(BatchingWriter, self).flush()
 
     def close(self):
-        self.flush()
+        if self.closed:
+            assert not len(self.acc_batch)
+        else:
+            self.flush()
         super(BatchingWriter, self).close()
 
 
@@ -284,16 +298,15 @@ class Reader(FileWrapper):
         self.seen_end = False
 
     def close(self):
-        super(Reader, self).close()
-        try:
+        if not self.closed:
             del self.obj_locators
-        except AttributeError:
-            pass
+        super(Reader, self).close()
 
     # fileobj API
     def read(self):
         '''sequentially read object from file
         '''
+        self.ensure_not_closed()
         obj =  self.read_index(self.next_index)
         self.next_index += 1
         return obj
@@ -301,6 +314,7 @@ class Reader(FileWrapper):
     def seek(self, offset, whence=None):
         '''seek for sequential read using same API as fileobj seek
         '''
+        self.ensure_not_closed()
         if not isinstance(offset, (int,long)):
             raise TypeError("bad offset %r" % (offset,))
         if whence==None or whence==0:
@@ -321,6 +335,7 @@ class Reader(FileWrapper):
 
     # sequence API
     def __len__(self):
+        self.ensure_not_closed()
         self.read_all_locators()
         return len(self.obj_locators)
 
@@ -328,6 +343,7 @@ class Reader(FileWrapper):
         return self.iterslice()
 
     def __getitem__(self, item):
+        self.ensure_not_closed()
         if isinstance(item, slice):
             return list(self.iterslice(item))
         try:
@@ -342,6 +358,7 @@ class Reader(FileWrapper):
             raise IndexError("can't read item %d in stream of length %d" % (item, len(self)))
 
     def iterslice(self, start=None, stop=None, step=None):
+        self.ensure_not_closed()
         if stop is None and step is None and isinstance(start, slice):
             slc = start
             start = slc.start
