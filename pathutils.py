@@ -304,6 +304,16 @@ class DirPath(FilePath):
         if not self.exists():
             self.mkdir(recursive=True)
 
+    def safely_reqdir(self):
+        """Create directory in an environment where other processes may be trying to
+           create same directory
+        """
+        try:
+            self.reqdir()
+        except OSError:
+            if not self.exists():
+                raise
+
     def rmdir(self, recursive=False):
         rmdir = [os.rmdir, shutil.rmtree][bool(recursive)]
         rmdir(self)
