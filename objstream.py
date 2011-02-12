@@ -285,7 +285,10 @@ class Reader(FileWrapper):
 
     def close(self):
         super(Reader, self).close()
-        del self.obj_locators
+        try:
+            del self.obj_locators
+        except AttributeError:
+            pass
 
     # fileobj API
     def read(self):
