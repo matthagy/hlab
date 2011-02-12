@@ -310,8 +310,8 @@ class DirPath(FilePath):
         """
         try:
             self.reqdir()
-        except OSError:
-            if not self.exists():
+        except OSError,e:
+            if e.errno != errno.EEXIST:
                 raise
 
     def rmdir(self, recursive=False):
