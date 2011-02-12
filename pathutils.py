@@ -19,6 +19,7 @@
 ## along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ## ---------------------------------------------------------------------
 
+from __future__ import absolute_import
 
 import sys
 import os
@@ -26,7 +27,9 @@ import pwd
 import grp
 import re
 import shutil
+import errno
 
+from .util import msg
 
 #Exceptions
 class MissingFile(Exception):
@@ -230,6 +233,20 @@ class FilePath(BasePath):
 
     def unlink(self):
         os.unlink(self)
+
+    def unlink_carefully(self, raise_exc=False):
+        """Unlink a file in an environment where other processes may be trying to
+           unlink same file
+        """
+        try:
+            self.unlink()
+        except OSError, e:
+            if e.errno != errno.ENOENT:
+                if raise_exc:
+                    raise
+                else:
+                    msg('failed to unlink file %s: %s', path, e)
+
     def rename(self, name):
         os.rename(self, name)
 
