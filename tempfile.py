@@ -32,7 +32,9 @@ def temp_file_proxy(path, mode='w', tmp_suffix = '~tmp~%s~' % rnd_holder, open=_
         while True:
             assert tmp_suffix.count(rnd_holder) == 1
             rnd_tmp_suffix = tmp_suffix.replace(rnd_holder, '%X' % randrange(0xffffffff))
-        tmp_path = FilePath(path + rnd_tmp_suffix)
+            tmp_path = FilePath(path + rnd_tmp_suffix)
+            if not tmp_path.exists():
+                break
 
     if tmp_path.exists():
         raise RuntimeError("temporary file %s already exists" % (tmp_path,))
