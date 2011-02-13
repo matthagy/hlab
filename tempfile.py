@@ -8,7 +8,7 @@ import tempfile
 from contextlib import contextmanager, closing
 from random import randrange
 
-from .pathutils import FilePath
+from .pathutils import FilePath, DirPath
 
 
 @contextmanager
@@ -18,6 +18,15 @@ def temporary_file(*args, **kwds):
         yield tmp_path
     finally:
         tmp_path.unlink_carefully()
+
+@contextmanager
+def temporary_directory(*args, **kwds):
+    tmp_path = DirPath(tempfile.mktemp(*args, **kwds))
+    tmp_path.reqdir()
+    try:
+        yield tmp_path
+    finally:
+        tmp_path.rmdir_carefully(recursive=True)
 
 
 rnd_holder = '<RND>'

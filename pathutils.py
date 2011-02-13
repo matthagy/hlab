@@ -245,7 +245,7 @@ class FilePath(BasePath):
                 if raise_exc:
                     raise
                 else:
-                    msg('failed to unlink file %s: %s', path, e)
+                    msg('failed to unlink file %s: %s', self, e)
 
     def rename(self, name):
         os.rename(self, name)
@@ -317,6 +317,19 @@ class DirPath(FilePath):
     def rmdir(self, recursive=False):
         rmdir = [os.rmdir, shutil.rmtree][bool(recursive)]
         rmdir(self)
+
+    def rmdir_carefully(self, recursive=False, raise_exc=False):
+        """Unlink a file in an environment where other processes may be trying to
+           unlink same file
+        """
+        try:
+            self.rmdir(recursive=recursive)
+        except OSError, e:
+            if e.errno != errno.ENOENT:
+                if raise_exc:
+                    raise
+                else:
+                    msg('failed to rmdir %s: %s', self, e)
 
     def itercontents(self, recursive=False):
         for path in self.listdir():
