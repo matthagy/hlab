@@ -1,5 +1,9 @@
 
-from Gnuplot import Gnuplot, Data
+try:
+    from Gnuplot import Gnuplot, Data
+except ImportError:
+    pass
+
 from numpy import *
 
 def make_data(*args, **kwds):
