@@ -6,7 +6,10 @@ import sys
 import os
 from bisect import bisect_right
 
-import Gnuplot
+try:
+    import Gnuplot
+except ImportError:
+    pass
 from numpy import *
 
 class BaseTable(object):
