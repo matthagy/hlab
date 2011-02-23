@@ -7,13 +7,12 @@ import sys
 import new
 import ctypes as C
 
-from HH2.pathutils import FilePath
-
 from jamenson.runtime import atypes
 from jamenson.runtime.multimethod import MultiMethod, defmethod
 from jamenson.runtime.atypes import intersection, Seq, typep, complement, anytype
 from jamenson.runtime.atypes.accessors import Item
 
+from .pathutils import FilePath
 from .func import identity, partial, return_it
 
 __all__ = '''
