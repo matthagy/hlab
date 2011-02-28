@@ -1,12 +1,12 @@
 '''Unique salt for each machine to ensure stochastic processes
-   simulated on different machines are not identical
+   simulated on different computer clusters are not identical
 '''
 
 from __future__ import absolute_import
 
 import os
 
-from .pathtuils import FilePath
+from .pathutils import FilePath
 
 salt_filepath = FilePath(os.path.expanduser('~/var/hlab-salt'))
 
