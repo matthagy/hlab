@@ -516,7 +516,7 @@ class Reader(FileWrapper):
     def handle_io_error(self, e):
         if self.ignore_corrupt_entries:
             return None
-        raise CorruptFilep(str(e))
+        raise CorruptFile(str(e))
 
 
 def open_cached_locators(filepath, cache_path=None, ignore_corrupt_entries=False):
