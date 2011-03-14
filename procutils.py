@@ -49,7 +49,7 @@ def do_while_interrupted(func):
 run_program_notify_hook = []
 
 def run_program_notify(proc, prog, args, kwds):
-    for fun in run_program_notify_hook:
+    for func in run_program_notify_hook:
         func(proc, prog, args, kwds)
 
 def add_run_program_notify(func):
