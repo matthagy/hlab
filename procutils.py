@@ -88,5 +88,5 @@ class PidRecorder(object):
         if not sys_proc_path.exists():
             return 'None'
         with open(sys_proc_path) as fp:
-            return fp.readline()
+            return '[%s]' % fp.readline().strip()
 
