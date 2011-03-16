@@ -95,7 +95,7 @@ CHLAB_acc_periodic_orient(double * restrict r_orient_acc, int * restrict r_Ns,
 
 
 void
-CHLAB_acc_periodic_orient_position(double * restrict acc_count,
+CHLAB_acc_periodic_orient_position(int * restrict acc_count,
                                    int N_1d_count, double prec,
                                    const double * restrict positions,
                                    const double * restrict orients,
