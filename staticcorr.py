@@ -194,7 +194,7 @@ class XBaseStreamingPairCorrelationExtractor(BaseExtractor):
     def wrap_extraction(op):
         return op
 
-    global_extraction_function = identity_extract
+    global_extraction_function = staticmethod(identity)
     extract_args = ()
     extract_kwds = None
 
@@ -217,7 +217,7 @@ class XBaseStreamingPairCorrelationExtractor(BaseExtractor):
         acc = None
         for i,extract in enumerate(extract_iter):
             self.provide_info(i, length, None)
-            acc = extract if acc not None else self.reduce_extractions(acc, extract)
+            acc = extract if acc is None else self.reduce_extractions(acc, extract)
         if acc is None:
             return None
         return self.wrap_extraction(acc)
@@ -232,7 +232,7 @@ class XStreamingPerodicPairCorrelationExtractor(XBaseStreamingPairCorrelationExt
 
     output_name = 'xspaircorr'
 
-    global_extraction_function = calcuclate_periodic_rs
+    global_extraction_function = staticmethod(calcuclate_periodic_rs)
 
     @staticmethod
     def reduce_extractions(a, b):
@@ -330,6 +330,7 @@ class OrientationCorrelation(object):
                           for index in np.arange(1+indices.max())))
         return PairCorrelation(g, self.prec)
 
+
 class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
 
     def initialize_extract(self):
@@ -392,4 +393,10 @@ class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelation
 
     def reduce_extraction(self):
         return OrientationCorrelation.from_acc(self.acc, self.prec)
+
+
+
+
+
+
 
