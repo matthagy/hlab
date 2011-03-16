@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import absolute_import
 
 import warnings
+import __builtin__
 
 import numpy as np
 
@@ -238,3 +239,114 @@ class XStreamingPeriodicPairOrientationExtractor(XBaseStreamingPairCorrelationEx
         rs = np.arange(0, 1 + self.max_r // self.prec, 1, dtype=float) * self.prec
         orients = self.acc_all_orients[w] / self.acc_all_n_rs[w]
         return PairOrientationCorrelation(rs, orients)
+
+
+class OrientationCorrelation(object):
+
+    def __init__(self, g, prec):
+        self.g = g
+        self.prec = prec
+
+    @classmethod
+    def from_acc(cls, ns, prec):
+        assert ns.ndim == 2
+        assert ns.shape[0] == ns.shape[1], 'bad shape %s' % (ns.shape,)
+
+        bi = np.arange(ns.shape[0])
+        dA = np.pi * prec * ((bi+1)**2 - bi**2)
+        ns = ns / dA[..., np.newaxis]
+
+        max_r = (1 + ns.shape[0]) * prec
+
+        v = prec**2
+        V = 0.25 * np.pi * max_r ** 2
+        N = ns.sum()
+        g = (V / (N * v)) * ns
+
+        assert np.all(np.isfinite(g))
+        return cls(g, prec)
+
+    def create_1d_g(self):
+        i,j = np.indices(self.g.shape)
+        indices = np.floor(np.sqrt(i**2 + j**2)).astype(int).ravel()
+        acc = defaultdict(list)
+        for index,gi in zip(indices, self.g):
+            acc[index].append(gi)
+        mean = np.mean
+        g = np.array(list(mean(acc[index]) if index in acc else 0.0
+                          for index in np.arange(1+indices.max())))
+        return PairCorrelation(g, self.prec)
+
+    def create_1d_g(self):
+        i,j = np.indices(self.g.shape)
+        indices = np.floor(np.sqrt(i**2 + j**2)).astype(int).ravel()
+        acc = np.ones(indices.max() + 1, dtype=float)
+        for index,gi in zip(indices, self.g.ravel()):
+            acc[index] += gi
+        g = np.array(list(acc[index] / (indices == index).sum()
+                          for index in np.arange(1+indices.max())))
+        return PairCorrelation(g, self.prec)
+
+class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
+
+    def initialize_extract(self):
+        n = int(np.floor(self.max_r / self.prec)) + 1
+        self.acc = np.zeros((n,n), dtype=float)
+        self.acc_one = np.empty(self.acc.shape, dtype=int)
+
+    def acc_a_config(self, (positions, orientations)):
+        max_r = self.max_r
+        max_r2 = max_r ** 2
+        box_size = self.box_size[0]
+        assert np.allclose(box_size, self.box_size)
+        prec = self.prec
+
+        floor = np.floor
+        sqrt = np.sqrt
+        abs = np.abs
+        all = np.all
+        newaxis = np.newaxis
+        zip = __builtin__.zip
+
+        acc_one = self.acc_one
+        acc_one.fill(0)
+
+        indices = np.arange(len(positions))
+        acc_angles = []
+        for i,(pos_i, direct_i) in enumerate(zip(positions, orientations)):
+
+            r_ijs = positions[indices != i, ::] - pos_i[newaxis, ...]
+            r_ijs[r_ijs > +0.5*box_size] -= box_size
+            r_ijs[r_ijs < -0.5*box_size] += box_size
+
+            r2s = (r_ijs ** 2).sum(axis=1)
+            w = r2s < max_r2
+            r2s = r2s[w]
+            rs = sqrt(r2s)
+            r_ijs = r_ijs[w]
+
+            ys = np.abs((r_ijs * direct_i[np.newaxis, ::]).sum(axis=1))
+            xs = sqrt(r2s - ys**2)
+
+            assert np.allclose(xs**2 + ys**2, r2s)
+
+            #acc_angles.append(np.arctan(ys / xs))
+
+            xis = floor(xs / prec).astype(int)
+            yis = floor(ys / prec).astype(int)
+            assert all(xis >= 0)
+            assert all(yis >= 0)
+
+            for xy_i in zip(xis, yis):
+                acc_one[xy_i] += 1
+
+        self.acc += acc_one
+
+        #angles = np.concatenate(acc_angles)
+        #print 'angles %.4f' % (angles.mean() / np.pi * 180.0,)
+        #exit()
+
+
+    def reduce_extraction(self):
+        return OrientationCorrelation.from_acc(self.acc, self.prec)
+
