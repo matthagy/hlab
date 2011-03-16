@@ -25,7 +25,7 @@ libchlab = C.deflib(libpath,
                                        C.c_int, C.c_double, C.c_double,
                                        C.c_double_p, C.c_double_p, C.c_int,
                                        C.c_double_p]],
-    [C.c_void, 'acc_periodic_orient_position', [C.c_double_p,
+    [C.c_void, 'acc_periodic_orient_position', [C.c_int_p,
                                                 C.c_int, C.c_double,
                                                 C.c_double_p, C.c_double_p, C.c_int,
                                                 C.c_double_p]]
