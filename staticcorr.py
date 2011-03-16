@@ -6,6 +6,8 @@ from __future__ import absolute_import
 
 import warnings
 import __builtin__
+from multiprocessing import Pool
+from contextlib import closing
 
 import numpy as np
 
@@ -137,6 +139,11 @@ class PairCorrelationExtractor(BaseExtractor):
             self.pair_indices[N] = np.array( np.array(np.triu_indices(N, 1)).T )
         return self.pair_indices[N]
 
+def identity(op):
+    return op
+
+def do_extract((func, func_args, func_kwds, op)):
+    return func(op, *func_args, **func_kwds)
 
 class XBaseStreamingPairCorrelationExtractor(BaseExtractor):
 
@@ -167,40 +174,76 @@ class XBaseStreamingPairCorrelationExtractor(BaseExtractor):
 
         self.length = length
 
-    def extract(self):
-        self.initialize_extract()
+    def get_length(self):
         if self.length is not None:
-            length = self.length
-        else:
-            try:
-                length = len(self.config_iterator)
-            except (ValueError, AttributeError, TypeError):
-                length = None
-        for i,config in enumerate(self.config_iterator):
-            self.acc_a_config(config)
-            self.provide_info(i, length, None)
-        return self.reduce_extraction()
+            return self.length
+        try:
+            return len(self.config_iterator)
+        except (ValueError, AttributeError, TypeError):
+            return None
 
+    @staticmethod
+    def initialize_extract(asynchronous):
+        pass
+
+    @staticmethod
+    def reduce_extractions(op, acc):
+        return op + acc
+
+    @staticmethod
+    def wrap_extraction(op):
+        return op
+
+    global_extraction_function = staticmethod(identity)
+    extract_args = ()
+    extract_kwds = None
+
+    def extract(self):
+        return self.extraction_loop(False, (self.global_extraction_function(config, *self.extract_args, **(self.extract_kwds or {}))
+                                            for config in self.config_iterator))
+
+    def extract_pool(self, pool):
+        return self.extraction_loop(True, pool.imap_unordered(do_extract, ((self.global_extraction_function,
+                                                                            self.extract_args, (self.extract_kwds or {}), config)
+                                                                           for config in self.config_iterator)))
+
+    def extract_asynchronous(self, processes=None):
+        with closing(Pool(processes)) as pool:
+            return self.extract_pool(pool)
+
+    def extraction_loop(self, asynchronous, extract_iter):
+        self.initialize_extract(asynchronous)
+        length = self.get_length()
+        acc = None
+        for i,extract in enumerate(extract_iter):
+            self.provide_info(i, length, None)
+            acc = extract if acc is None else self.reduce_extractions(acc, extract)
+        if acc is None:
+            return None
+        return self.wrap_extraction(acc)
+
+
+def calcuclate_periodic_rs(positions, prec, max_r, box_size):
+    acc_config_rs = np.zeros(1 + max_r / prec, dtype=acc_rs_dtype)
+    acc_periodic_rs(acc_config_rs, 0, prec, positions, box_size)
+    return acc_config_rs
 
 class XStreamingPerodicPairCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
 
     output_name = 'xspaircorr'
 
-    def initialize_extract(self):
-        self.acc_one_config_rs = np.empty(1 + self.max_r / self.prec,
-                                          dtype=acc_rs_dtype)
-        self.acc_all_rs = np.zeros(self.acc_one_config_rs.shape, dtype=float)
+    global_extraction_function = staticmethod(calcuclate_periodic_rs)
 
-    def acc_a_config(self, config):
-        self.acc_one_config_rs.fill(0)
-        acc_periodic_rs(self.acc_one_config_rs, 0, self.prec,
-                        config, self.box_size)
-        self.acc_all_rs += self.acc_one_config_rs
+    @staticmethod
+    def reduce_extractions(a, b):
+        return (a+b).astype(np.float64)
 
-    def reduce_extraction(self):
-        dist = Distribution(self.acc_all_rs, prec=self.prec)
-        g = PairCorrelation.from_density_distribution(dist)
-        return g
+    def initialize_extract(self, asynchronous):
+        self.extract_args = self.prec, self.max_r, self.box_size
+
+    def wrap_extraction(self, config_rs):
+        dist = Distribution(config_rs, prec=self.prec)
+        return PairCorrelation.from_density_distribution(dist)
 
 
 class PairOrientationCorrelation(object):
@@ -287,6 +330,7 @@ class OrientationCorrelation(object):
                           for index in np.arange(1+indices.max())))
         return PairCorrelation(g, self.prec)
 
+
 class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
 
     def initialize_extract(self):
@@ -349,4 +393,10 @@ class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelation
 
     def reduce_extraction(self):
         return OrientationCorrelation.from_acc(self.acc, self.prec)
+
+
+
+
+
+
 
