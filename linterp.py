@@ -97,17 +97,23 @@ class InHomogenousTable(BaseTable):
             return array(map(self.interpolate, x.ravel())).reshape(x.shape)
         b = bisect_right(self.x, x)
         a = b-1
-        if a < 0:
+        if b == len(self.x) and epsilon_eq(x, self.x[-1]):
+            return self.y[-1]
+        elif a < 0 or b >= len(self.x):
             raise ValueError('%r not in table' % (x,))
-        wa = 1.0 / (x - self.x[a])
-        if isinf(wa):
+
+        delta = x - self.x[a]
+        if epsilon_eq(delta, 0):
             return self.y[a]
-        try:
-            wb = 1.0 / (self.x[b] - x)
-        except IndexError:
-            if b == len(self.x) and epsilon_eq(x, self.x[-1]):
-                return self.y[-1]
-            raise ValueError('%r not in table' % (x,))
+        wa = 1.0 / delta
+        assert not isinf(wa)
+
+        delta = self.x[b] - x
+        if epsilon_eq(delta, 0):
+            return self.y[b]
+        wb = 1.0 / delta
+        assert not isinf(wb)
+
         assert wa >= 0, 'w=%g a=%d x[a]=%g x=%g' % (wa, a, self.x[a], x)
         assert wb >= 0, 'w=%g b=%d x[b]=%g x=%g' % (wb, b, self.x[b], x)
         return (wa*self.y[a] + wb*self.y[b]) / (wa+wb)
