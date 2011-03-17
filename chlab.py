@@ -128,13 +128,13 @@ def acc_periodic_orient_position(acc_count, prec, positions, orientations, box_s
     positions = validate_positions(positions)
     orientations = validate_orientations(orientations, positions)
 
-    libchlab.acc_periodic_orient_position(acc_count.ctypes.data_as(acc_rs_dtype),
+    libchlab.acc_periodic_orient_position(acc_count.ctypes.data_as(C.c_int_p),
                                           acc_count.shape[0],
                                           prec,
-                                          positions.ctypes.data_as(c_double_p),
-                                          orientations.ctypes.data_as(c_double_p),
+                                          positions.ctypes.data_as(C.c_double_p),
+                                          orientations.ctypes.data_as(C.c_double_p),
                                           positions.shape[0],
-                                          box_size.ctypes.data_as(c_double_p))
+                                          box_size.ctypes.data_as(C.c_double_p))
     return acc_count
 
 
