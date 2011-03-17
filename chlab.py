@@ -106,8 +106,8 @@ def validate_positions(positions):
     return positions
 
 def validate_orientations(orientations, positions):
-    orients = np.asarray(orients, dtype=np.dtype(C.c_double))
-    if orients.shape != positions.shape:
+    orientations = np.asarray(orientations, dtype=np.dtype(C.c_double))
+    if orientations.shape != positions.shape:
         raise ValueError("inconsistent positions/orientations array shapes")
     return orientations
 
