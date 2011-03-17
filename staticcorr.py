@@ -16,7 +16,8 @@ from .util import coere_listlike, calculate_periodic_deltas
 from .prof import Profile, Distribution
 from .extractor import BaseExtractor
 try:
-    from .chlab import acc_periodic_rs, acc_periodic_orientation_rs, acc_rs_dtype, acc_orients_dtype
+    from .chlab import (acc_periodic_rs, acc_periodic_orientation_rs, acc_rs_dtype,
+                        acc_orients_dtype, acc_periodic_orient_position)
 except ImportError:
     pass
 
@@ -235,8 +236,10 @@ class XStreamingPerodicPairCorrelationExtractor(XBaseStreamingPairCorrelationExt
     global_extraction_function = staticmethod(calcuclate_periodic_rs)
 
     @staticmethod
-    def reduce_extractions(a, b):
-        return (a+b).astype(np.float64)
+    def reduce_extractions(op, acc):
+        acc = acc.astype(np.float64)
+        acc += op
+        return acc
 
     def initialize_extract(self, asynchronous):
         self.extract_args = self.prec, self.max_r, self.box_size
@@ -331,68 +334,27 @@ class OrientationCorrelation(object):
         return PairCorrelation(g, self.prec)
 
 
+def calculate_orient_position((positions, orientations), prec, max_r, box_size):
+    n = int(np.floor(max_r / prec)) + 1
+    acc = np.zeros((n,n), dtype=acc_rs_dtype)
+    acc_periodic_orient_position(acc, prec, positions, orientations, box_size)
+    return acc
+
 class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
 
-    def initialize_extract(self):
-        n = int(np.floor(self.max_r / self.prec)) + 1
-        self.acc = np.zeros((n,n), dtype=float)
-        self.acc_one = np.empty(self.acc.shape, dtype=int)
+    global_extraction_function = staticmethod(calculate_orient_position)
 
-    def acc_a_config(self, (positions, orientations)):
-        max_r = self.max_r
-        max_r2 = max_r ** 2
-        box_size = self.box_size[0]
-        assert np.allclose(box_size, self.box_size)
-        prec = self.prec
+    @staticmethod
+    def reduce_extractions(op, acc):
+        acc = acc.astype(np.float64)
+        acc += op
+        return acc
 
-        floor = np.floor
-        sqrt = np.sqrt
-        abs = np.abs
-        all = np.all
-        newaxis = np.newaxis
-        zip = __builtin__.zip
+    def initialize_extract(self, asynchronous):
+        self.extract_args = self.prec, self.max_r, self.box_size
 
-        acc_one = self.acc_one
-        acc_one.fill(0)
-
-        indices = np.arange(len(positions))
-        acc_angles = []
-        for i,(pos_i, direct_i) in enumerate(zip(positions, orientations)):
-
-            r_ijs = positions[indices != i, ::] - pos_i[newaxis, ...]
-            r_ijs[r_ijs > +0.5*box_size] -= box_size
-            r_ijs[r_ijs < -0.5*box_size] += box_size
-
-            r2s = (r_ijs ** 2).sum(axis=1)
-            w = r2s < max_r2
-            r2s = r2s[w]
-            rs = sqrt(r2s)
-            r_ijs = r_ijs[w]
-
-            ys = np.abs((r_ijs * direct_i[np.newaxis, ::]).sum(axis=1))
-            xs = sqrt(r2s - ys**2)
-
-            assert np.allclose(xs**2 + ys**2, r2s)
-
-            #acc_angles.append(np.arctan(ys / xs))
-
-            xis = floor(xs / prec).astype(int)
-            yis = floor(ys / prec).astype(int)
-            assert all(xis >= 0)
-            assert all(yis >= 0)
-
-            for xy_i in zip(xis, yis):
-                acc_one[xy_i] += 1
-
-        self.acc += acc_one
-
-        #angles = np.concatenate(acc_angles)
-        #print 'angles %.4f' % (angles.mean() / np.pi * 180.0,)
-        #exit()
-
-
-    def reduce_extraction(self):
-        return OrientationCorrelation.from_acc(self.acc, self.prec)
+    def wrap_extraction(self, acc):
+        return OrientationCorrelation.from_acc(acc, self.prec)
 
 
 
