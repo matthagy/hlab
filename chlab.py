@@ -121,7 +121,7 @@ def acc_periodic_orient_position(acc_count, prec, positions, orientations, box_s
     acc_count = validate_acc_array(acc_count)
     if acc_count.ndim != 2:
         raise ValueError("acc_count must be a 2D array")
-    if acc_count.shape[0] != acc_count[1]:
+    if acc_count.shape[0] != acc_count.shape[1]:
         raise ValueError("acc_count must be a square array")
 
     prec = validate_prec(prec)
