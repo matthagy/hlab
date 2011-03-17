@@ -150,13 +150,13 @@ CHLAB_acc_periodic_orient_position(int * restrict acc_count,
 }
 
 void
-CHLAB_acc_periodic_pair_orientation(double * restrict r_orient_acc,
-                                    int * restrict r_Ns,
-                                    int N_1d_count, double prec,
-                                    const double * restrict positions,
-                                    const double * restrict orients,
-                                    int N_positions,
-                                    const double * restrict box_size)
+CHLAB_acc_periodic_pair_orient(double * restrict r_orient_acc,
+                               int * restrict r_Ns,
+                               int N_1d_count, double prec,
+                               const double * restrict positions,
+                               const double * restrict orients,
+                               int N_positions,
+                               const double * restrict box_size)
 {
   double x_h = 0.5 * box_size[0];
   double y_h = 0.5 * box_size[1];
