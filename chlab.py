@@ -28,7 +28,11 @@ libchlab = C.deflib(libpath,
     [C.c_void, 'acc_periodic_orient_position', [C.c_int_p,
                                                 C.c_int, C.c_double,
                                                 C.c_double_p, C.c_double_p, C.c_int,
-                                                C.c_double_p]]
+                                                C.c_double_p]],
+    [C.c_void, 'acc_periodic_pair_orient', [C.c_double_p, C.c_int_p,
+                                            C.c_int, C.c_double,
+                                            C.c_double_p, C.c_double_p, C.c_int,
+                                            C.c_double_p]]
     ])
 
 acc_rs_dtype = np.dtype(C.c_int)
@@ -55,12 +59,8 @@ def acc_periodic_orientation_rs(acc_rs_orient, acc_rs_Ns,
 
     [acc_rs_Ns, r_min, r_prec, positions, box_size
      ] = acc_periodic_fixup(acc_rs_Ns, r_min, r_prec, positions, box_size)
-
-    if not isinstance(acc_rs_orient, np.ndarray):
-        raise TypeError("must accumulate into ndarray")
-
-    orients = np.asarray(orients, dtype=np.dtype(C.c_double))
-
+    acc_rs_orient = validate_rs_orients(acc_rs_orient)
+    orients = validate_orientations(orients, positions)
     libchlab.acc_periodic_orient(
         acc_rs_orient.ctypes.data_as(C.c_double_p),
         acc_rs_Ns.ctypes.data_as(C.c_int_p),
@@ -92,6 +92,12 @@ def validate_acc_array(acc_array):
     if acc_array.dtype != acc_rs_dtype:
         raise ValueError("bad array type; must be equivalent to c_int")
     return acc_array
+
+def validate_rs_orients(acc_rs_orient):
+    if not isinstance(acc_rs_orient, np.ndarray):
+        raise TypeError("must accumulate into ndarray")
+    orients = np.asarray(orients, dtype=np.dtype(C.c_double))
+    return acc_rs_orient
 
 def validate_prec(prec):
     prec = float(prec)
@@ -136,5 +142,30 @@ def acc_periodic_orient_position(acc_count, prec, positions, orientations, box_s
                                           positions.shape[0],
                                           box_size.ctypes.data_as(C.c_double_p))
     return acc_count
+
+def acc_periodic_pair_orient(acc_orients, acc_counts,
+                             prec, positions, orientations, box_size):
+    acc_count = validate_acc_array(acc_count)
+    if acc_count.ndim != 2:
+        raise ValueError("acc_count must be a 2D array")
+    if acc_count.shape[0] != acc_count.shape[1]:
+        raise ValueError("acc_count must be a square array")
+    acc_orients = validate_rs_orients(acc_orients)
+    if acc_orients.shape != acc_count.shape:
+        raise ValueError("inconsistent shapes between acc_count and acc_orients")
+
+    prec = validate_prec(prec)
+    positions = validate_positions(positions)
+    orientations = validate_orientations(orientations, positions)
+
+    libchlab.acc_periodic_orient_position(acc_orients.ctypes.data_as(C.c_double_p),
+                                          acc_count.ctypes.data_as(C.c_int_p),
+                                          acc_count.shape[0],
+                                          prec,
+                                          positions.ctypes.data_as(C.c_double_p),
+                                          orientations.ctypes.data_as(C.c_double_p),
+                                          positions.shape[0],
+                                          box_size.ctypes.data_as(C.c_double_p))
+    return acc_orients, acc_count
 
 
