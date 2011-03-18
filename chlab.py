@@ -96,7 +96,8 @@ def validate_acc_array(acc_array):
 def validate_rs_orients(acc_rs_orient):
     if not isinstance(acc_rs_orient, np.ndarray):
         raise TypeError("must accumulate into ndarray")
-    orients = np.asarray(orients, dtype=np.dtype(C.c_double))
+    if acc_rs_orient.dtype != acc_orients_dtype:
+        raise ValueError("bad array type; must be equivalent to c_double")
     return acc_rs_orient
 
 def validate_prec(prec):
@@ -143,7 +144,7 @@ def acc_periodic_orient_position(acc_count, prec, positions, orientations, box_s
                                           box_size.ctypes.data_as(C.c_double_p))
     return acc_count
 
-def acc_periodic_pair_orient(acc_orients, acc_counts,
+def acc_periodic_pair_orient(acc_orients, acc_count,
                              prec, positions, orientations, box_size):
     acc_count = validate_acc_array(acc_count)
     if acc_count.ndim != 2:
@@ -158,14 +159,14 @@ def acc_periodic_pair_orient(acc_orients, acc_counts,
     positions = validate_positions(positions)
     orientations = validate_orientations(orientations, positions)
 
-    libchlab.acc_periodic_orient_position(acc_orients.ctypes.data_as(C.c_double_p),
-                                          acc_count.ctypes.data_as(C.c_int_p),
-                                          acc_count.shape[0],
-                                          prec,
-                                          positions.ctypes.data_as(C.c_double_p),
-                                          orientations.ctypes.data_as(C.c_double_p),
-                                          positions.shape[0],
-                                          box_size.ctypes.data_as(C.c_double_p))
+    libchlab.acc_periodic_pair_orient(acc_orients.ctypes.data_as(C.c_double_p),
+                                      acc_count.ctypes.data_as(C.c_int_p),
+                                      acc_count.shape[0],
+                                      prec,
+                                      positions.ctypes.data_as(C.c_double_p),
+                                      orientations.ctypes.data_as(C.c_double_p),
+                                      positions.shape[0],
+                                      box_size.ctypes.data_as(C.c_double_p))
     return acc_orients, acc_count
 
 

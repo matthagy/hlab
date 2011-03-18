@@ -17,7 +17,8 @@ from .prof import Profile, Distribution
 from .extractor import BaseExtractor
 try:
     from .chlab import (acc_periodic_rs, acc_periodic_orientation_rs, acc_rs_dtype,
-                        acc_orients_dtype, acc_periodic_orient_position)
+                        acc_orients_dtype, acc_periodic_orient_position,
+                        acc_periodic_pair_orient)
 except ImportError:
     pass
 
@@ -249,42 +250,42 @@ class XStreamingPerodicPairCorrelationExtractor(XBaseStreamingPairCorrelationExt
         return PairCorrelation.from_density_distribution(dist)
 
 
-class PairOrientationCorrelation(object):
+class OrientationCorrelation(object):
 
     def __init__(self, rs, orientations):
         self.rs = rs
         self.orientations = orientations
 
+def calculate_pair_orientation_corr((positions, orientations), prec, max_r, box_size):
+    n = 1 + int(max_r // prec)
+    config_n_rs = np.zeros(n, dtype=acc_rs_dtype)
+    config_orients = np.zeros(n, dtype=acc_orients_dtype)
+    acc_periodic_orientation_rs(config_orients, config_n_rs,
+                                0.0, prec, positions, orientations, box_size)
+    return (config_n_rs, config_orients)
 
 class XStreamingPeriodicPairOrientationExtractor(XBaseStreamingPairCorrelationExtractor):
 
     output_name = 'xspairorient'
 
-    def initialize_extract(self):
-        self.acc_one_config_n_rs = np.empty(1 + self.max_r // self.prec,
-                                            dtype=acc_rs_dtype)
-        self.acc_all_n_rs = np.zeros(self.acc_one_config_n_rs.shape, dtype=float)
+    global_extraction_function = staticmethod(calculate_pair_orientation_corr)
 
-        self.acc_one_config_orients = np.empty(1 + self.max_r / self.prec,
-                                               dtype=acc_orients_dtype)
-        self.acc_all_orients = np.zeros(self.acc_one_config_orients.shape, dtype=float)
+    @staticmethod
+    def reduce_extractions((n_rs, orients), (acc_n_rs, acc_orients)):
+        acc_n_rs = acc_n_rs.astype(np.float64)
+        acc_orients = acc_orients.astype(np.float64)
+        acc_n_rs += n_rs
+        acc_orients += orients
+        return acc_n_rs, acc_orients
 
-    def acc_a_config(self, (positions, orientations)):
-        self.acc_one_config_n_rs.fill(0)
-        self.acc_one_config_orients.fill(0)
+    def initialize_extract(self, asynchronous):
+        self.extract_args = self.prec, self.max_r, self.box_size
 
-        acc_periodic_orientation_rs(self.acc_one_config_orients,
-                                    self.acc_one_config_n_rs,
-                                    0, self.prec, positions, orientations,
-                                    self.box_size)
-        self.acc_all_n_rs += self.acc_one_config_n_rs
-        self.acc_all_orients += self.acc_one_config_orients
-
-    def reduce_extraction(self):
-        w = np.where(self.acc_all_n_rs != 0)
-        rs = np.arange(0, 1 + self.max_r // self.prec, 1, dtype=float) * self.prec
-        orients = self.acc_all_orients[w] / self.acc_all_n_rs[w]
-        return PairOrientationCorrelation(rs, orients)
+    def wrap_extraction(self, (n_rs, orients)):
+        w = np.where(n_rs != 0)
+        rs = np.arange(0, 1 + n_rs.shape[0], 1, dtype=float)[w] * self.prec
+        orients = orients[w] / n_rs[w]
+        return OrientationCorrelation(rs, orients)
 
 
 class OrientationCorrelation(object):
@@ -358,7 +359,41 @@ class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelation
 
 
 
+class PairOrientationCorrelation(object):
+
+    def __init__(self, g, prec):
+        assert g.ndim == 2
+        assert g.shape[0] == g.shape[1], 'bad shape %s' % (g.shape,)
+
+        self.g = g
+        self.prec = prec
 
 
+def calculate_periodic_pair_orient((positions, orientations), prec, max_r, box_size):
+    n = 1 + int(max_r // prec)
+    config_n_rs = np.zeros((n,n), dtype=acc_rs_dtype)
+    config_orients = np.zeros((n,n), dtype=acc_orients_dtype)
+    acc_periodic_pair_orient(config_orients, config_n_rs,
+                             prec, positions, orientations, box_size)
+    return (config_n_rs, config_orients)
 
+class XStreamingOrientPositionPairCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
+
+    global_extraction_function = staticmethod(calculate_periodic_pair_orient)
+
+    @staticmethod
+    def reduce_extractions((n_rs, orients), (acc_n_rs, acc_orients)):
+        acc_n_rs = acc_n_rs.astype(np.float64)
+        acc_orients = acc_orients.astype(np.float64)
+        acc_n_rs += n_rs
+        acc_orients += orients
+        return acc_n_rs, acc_orients
+
+    def initialize_extract(self, asynchronous):
+        self.extract_args = self.prec, self.max_r, self.box_size
+
+    def wrap_extraction(self, (n_rs, orients)):
+        n_rs = n_rs.copy()
+        n_rs[n_rs == 0] = 1
+        return PairOrientationCorrelation(orients / n_rs, self.prec)
 

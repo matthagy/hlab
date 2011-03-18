@@ -190,14 +190,15 @@ CHLAB_acc_periodic_pair_orient(double * restrict r_orient_acc,
 
       double r2 = x_r*x_r + y_r*y_r + z_r*z_r;
       if (likely(r2 < max_r2)) {
-        double y = x_r * o_x_i + y_r * o_y_i + z_r * o_z_i;
+        double y = fabs(x_r * o_x_i + y_r * o_y_i + z_r * o_z_i);
         double x = sqrt(r2 - y*y);
 
         int xi = (int)floor(x / prec);
-        int yi = (int)floor(y / prec) - N_1d_count;
+        int yi = (int)floor(y / prec);
         assert(xi >= 0 && xi < N_1d_count);
         assert(yi >= 0 && yi < N_1d_count);
         int inx = xi * N_1d_count + yi;
+        assert(inx >=0 && inx < N_1d_count * N_1d_count);
 
         r_Ns[inx] ++;
 
