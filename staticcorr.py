@@ -22,12 +22,38 @@ try:
 except ImportError:
     pass
 
+def combine(*ops):
+    return reduce(lambda a,b: a.combine(b), ops)
 
 class PairProfile(Profile):
 
     @calculated
     def r(self):
         return self.indices
+
+    def combine(self, other):
+        if not isinstance(other, PairProfile):
+            raise TypeError("can only combine PairProfiles")
+        assert self.x_min == other.x_min
+        assert self.prec == other.prec
+        assert self._uncertainty is None
+        assert other._uncertainty is None
+        return self.__class__(combine_arrays(self.data, other.data), prec=self.prec, x_min=self.x_min)
+
+def combine_arrays(a, b):
+    a = np.asarray(a)
+    b = np.asarray(b)
+    if a.ndims != b.ndims:
+        raise ValueError("can't combine arrays with different dimensions")
+    if a.shape == b.shape:
+        return 0.5 * (a+b)
+    if a.ndims != 1:
+        raise ValueError("differently sized arrays can only be combined if one dimensional")
+    if a.size > b.size:
+        a,b = b,a
+    assert a.size < b.size
+    return np.concatenate([0.5 * (a + b[:a.size:]), b[a.size::]])
+
 
 class PairCorrelation(PairProfile):
     '''Static pair correlation function g(r)
@@ -256,6 +282,26 @@ class OrientationCorrelation(object):
         self.rs = rs
         self.orientations = orientations
 
+    def combine(self, other):
+        if not isinstance(other, OrientationCorrelation):
+            raise TypeError("can only combine OrientationCorrelations")
+        if self.rs.size == other.rs.size and np.allclose(self.rs, other.rs):
+            return self.__class__(self.rs, combine_arrays(self.orientations, other.orientations))
+        map_a = dict(self.rs, self.orientations)
+        map_b = dict(other.rs, other.orientations)
+        acc = []
+        for r in sorted(set(map_a) | set(map_b)):
+            if r not in map_a:
+                o = map_b[r]
+            elif r not in map_b:
+                o = map_a[r]
+            else:
+                o = 0.5 * (map_a[r] + map_b[r])
+            acc.append([r, o])
+        rs,orientations = np.array(acc).T
+        return self.__class__(rs, orientations)
+
+
 def calculate_pair_orientation_corr((positions, orientations), prec, max_r, box_size):
     n = 1 + int(max_r // prec)
     config_n_rs = np.zeros(n, dtype=acc_rs_dtype)
@@ -288,11 +334,16 @@ class XStreamingPeriodicPairOrientationExtractor(XBaseStreamingPairCorrelationEx
         return OrientationCorrelation(rs, orients)
 
 
-class OrientationCorrelation(object):
+class PositionOrientationCorrelation(object):
 
     def __init__(self, g, prec):
         self.g = g
         self.prec = prec
+
+    def combine(self, other):
+        if not isinstance(other, OrientationCorrelation):
+            raise TypeError("can only combine ")
+
 
     @classmethod
     def from_acc(cls, ns, prec):
@@ -355,7 +406,7 @@ class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelation
         self.extract_args = self.prec, self.max_r, self.box_size
 
     def wrap_extraction(self, acc):
-        return OrientationCorrelation.from_acc(acc, self.prec)
+        return PositionOrientationCorrelation.from_acc(acc, self.prec)
 
 
 
