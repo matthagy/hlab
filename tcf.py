@@ -25,25 +25,24 @@ class BaseTCFExtractor(BaseExtractor):
 
         N = len(self.seq)
         sample_step = 1 if self.sample_rate is None else int(round(self.sample_rate / self.delta))
-        corr_lengths = arange(min(N-2, N if self.longest_correlation is None else
-                                  int(round(self.longest_correlation / self.delta))))
-
+        corr_lengths = np.arange(min(N-2, N if self.longest_correlation is None else
+                                     int(round(self.longest_correlation / self.delta))))
         acc_corrs = []
-        for corr_length in corr_lengths:
-            self.provide_info(corr_lengths, corr_lengths[-1], None)
+        for inx,corr_length in enumerate(corr_lengths):
+            self.provide_info(inx, len(corr_lengths), None)
 
             corr_samples = np.array(map(self.calculate_a_correlation,
-                                        seq[:N-corr_length:sample_step],
-                                        seq[corr_length::sample_step]))
+                                        self.seq[:N-corr_length:sample_step],
+                                        self.seq[corr_length::sample_step]))
             acc_corrs.append([corr_samples.mean(axis=0),
-                              corr_samples.std(axis=0),
+                              corr_samples.std(axis=0) / np.sqrt(len(corr_samples)),
                               len(corr_samples)])
 
         if not len(acc_corrs):
             return None
 
-        mn,std,n = np.array(acc_corrs).T
-        return self.delta * np.arange(len(mn)), mn, std / np.sqrt(n), n
+        mn,err,n = map(np.array, zip(*acc_corrs))
+        return self.delta * np.arange(len(mn)), mn, err, n
 
     def calculate_correlation(self, x_i, x_f):
         raise RuntimeError("calculate_correlation not implemented")
