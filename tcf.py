@@ -101,14 +101,14 @@ class BaseVectorTCFCalculator(BaseTCFExtractor):
 
     def __init__(self, orientation_vectors, **kwds):
         ravel_orientation_vectors, base_shape = ravel_vector_quantities(orientation_vectors)
-        super(OrientationalTCFExtractor, self).__init__(ravel_orientation_vectors, **kwds)
+        super(BaseVectorTCFCalculator, self).__init__(ravel_orientation_vectors, **kwds)
         self.scratch = np.zeros_like(ravel_orientation_vectors[0])
         self.n_vectors = base_shape[0]
 
-    def calculate_correlation(self, initial_vectors, final_vectors):
+    def calculate_a_correlation(self, initial_vectors, final_vectors):
         # efficiently calculate mean(dot(v_i, v_f) for v_i, v_f in zip(initial_vectors, final_vectors))
-        np.multiply(initial_vectors, final_vectors, self.output)
-        return self.output.sum() / self.n_vectors
+        np.multiply(initial_vectors, final_vectors, self.scratch)
+        return self.scratch.sum() / self.n_vectors
 
 
 class OrientationalTCFExtractor(BaseVectorTCFCalculator):
