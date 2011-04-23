@@ -44,7 +44,7 @@ class BaseTCFExtractor(BaseExtractor):
         mn,err,n = map(np.array, zip(*acc_corrs))
         return self.delta * np.arange(len(mn)), mn, err, n
 
-    def calculate_correlation(self, x_i, x_f):
+    def calculate_a_correlation(self, x_i, x_f):
         raise RuntimeError("calculate_correlation not implemented")
 
 
@@ -69,7 +69,7 @@ class MeanSquareDisplacementTCFExtractor(BaseTCFExtractor):
         self.scratch = np.zeros_like(coms[0])
         self.n = len(self.scratch)
 
-    def calculate_correlation(self, initial_coms, final_coms):
+    def calculate_a_correlation(self, initial_coms, final_coms):
         # calculate the following expression efficiently
         #   sqrt(((final_coms - initial_coms) ** 2).sum(axis=1).mean())
         scratch = self.scratch
