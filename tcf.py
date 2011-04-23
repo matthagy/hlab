@@ -65,7 +65,7 @@ class MeanSquareDisplacementTCFExtractor(BaseTCFExtractor):
 
     def __init__(self, coms, box_size=None, **kwds):
         coms = normalize_positions_trajectories(coms, box_size)
-        super(MeanSquareTCFCalcualtor, self).__init__(coms, **kwds)
+        super(MeanSquareDisplacementTCFExtractor, self).__init__(coms, **kwds)
         self.scratch = np.zeros_like(coms[0])
         self.n = len(self.scratch)
 
