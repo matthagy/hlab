@@ -482,9 +482,14 @@ class Reader(FileWrapper):
             size = read_size_t(self.fileobj)
         except EOFError:
             return self.handle_eof_size()
+
         #check there are sufficient bytes to read this object
         start_offset = self.fileobj.tell()
-        self.fileobj.seek(start_offset + size - 1)
+        try:
+            self.fileobj.seek(start_offset + size - 1)
+        except OverflowError:
+            return self.handle_overflow_seek()
+
         last_byte = self.fileobj.read(1)
         if not last_byte:
             return self.handle_insufficient_obj_bytes()
@@ -509,6 +514,11 @@ class Reader(FileWrapper):
         if self.ignore_corrupt_entries:
             return None
         raise CorruptFile("EOF within size header")
+
+    def handle_overflow_seek(self):
+        if self.ignore_corrupt_entries:
+            return None
+        raise CorruptFile("overflow in seek; likely corrupt size")
 
     def handle_insufficient_obj_bytes(self):
         if self.ignore_corrupt_entries:
