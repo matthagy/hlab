@@ -20,13 +20,15 @@
 ## ---------------------------------------------------------------------
 
 from __future__ import with_statement
+from __future__ import absolute_import
 
 import cPickle as pickle
 import zlib
 import bz2
 from __builtin__ import open as builtin_open
 
-from hlab.pathutils import FilePath
+from .pathutils import FilePath
+from .tempfile import temp_file_proxy
 
 
 def open(filename, mode='r', **kwds):
@@ -480,9 +482,14 @@ class Reader(FileWrapper):
             size = read_size_t(self.fileobj)
         except EOFError:
             return self.handle_eof_size()
+
         #check there are sufficient bytes to read this object
         start_offset = self.fileobj.tell()
-        self.fileobj.seek(start_offset + size - 1)
+        try:
+            self.fileobj.seek(start_offset + size - 1)
+        except OverflowError:
+            return self.handle_overflow_seek()
+
         last_byte = self.fileobj.read(1)
         if not last_byte:
             return self.handle_insufficient_obj_bytes()
@@ -508,6 +515,11 @@ class Reader(FileWrapper):
             return None
         raise CorruptFile("EOF within size header")
 
+    def handle_overflow_seek(self):
+        if self.ignore_corrupt_entries:
+            return None
+        raise CorruptFile("overflow in seek; likely corrupt size")
+
     def handle_insufficient_obj_bytes(self):
         if self.ignore_corrupt_entries:
             return None
@@ -522,25 +534,29 @@ class Reader(FileWrapper):
 def open_cached_locators(filepath, cache_path=None, ignore_corrupt_entries=False):
     filepath = FilePath(filepath)
     fp = open(filepath)
+    fp.ignore_corrupt_entries = ignore_corrupt_entries
+
     if cache_path is None:
         cache_path = FilePath(filepath + '.locs')
     cache_path = FilePath(cache_path)
-    fp.ignore_corrupt_entries = ignore_corrupt_entries
+
+    cache_was_read = False
+
     if cache_path.exists() and cache_path.mtime() > filepath.mtime():
-        with open(cache_path, 'r') as cache_fp:
-            fp.obj_locators = cache_fp.read()
-    else:
-        fp.read_all_locators()
         try:
-            with open(cache_path, 'w') as cache_fp:
-                cache_fp.pickle_protocol = 2
-                cache_fp.write(fp.obj_locators)
-        except:
-            try:
-                cache_path.unlink()
-            except OSError:
-                pass
-            raise
+            with open(cache_path, 'r') as cache_fp:
+                obj_locators = cache_fp.read()
+        except (CorruptFile, EOFError):
+            pass
+        else:
+            cache_was_read = True
+
+    if not cache_was_read:
+        fp.read_all_locators()
+        with temp_file_proxy(cache_path, 'w', open=open) as cache_fp:
+            cache_fp.pickle_protocol = 2
+            cache_fp.write(fp.obj_locators)
+
     return fp
 
 

@@ -25,27 +25,26 @@ class BaseTCFExtractor(BaseExtractor):
 
         N = len(self.seq)
         sample_step = 1 if self.sample_rate is None else int(round(self.sample_rate / self.delta))
-        corr_lengths = arange(min(N-2, N if self.longest_correlation is None else
-                                  int(round(self.longest_correlation / self.delta))))
-
+        corr_lengths = np.arange(min(N-2, N if self.longest_correlation is None else
+                                     int(round(self.longest_correlation / self.delta))))
         acc_corrs = []
-        for corr_length in corr_lengths:
-            self.provide_info(corr_lengths, corr_lengths[-1], None)
+        for inx,corr_length in enumerate(corr_lengths):
+            self.provide_info(inx, len(corr_lengths), None)
 
             corr_samples = np.array(map(self.calculate_a_correlation,
-                                        seq[:N-corr_length:sample_step],
-                                        seq[corr_length::sample_step]))
+                                        self.seq[:N-corr_length:sample_step],
+                                        self.seq[corr_length::sample_step]))
             acc_corrs.append([corr_samples.mean(axis=0),
-                              corr_samples.std(axis=0),
+                              corr_samples.std(axis=0) / np.sqrt(len(corr_samples)),
                               len(corr_samples)])
 
         if not len(acc_corrs):
             return None
 
-        mn,std,n = np.array(acc_corrs).T
-        return self.delta * np.arange(len(mn)), mn, std / np.sqrt(n), n
+        mn,err,n = map(np.array, zip(*acc_corrs))
+        return self.delta * np.arange(len(mn)), mn, err, n
 
-    def calculate_correlation(self, x_i, x_f):
+    def calculate_a_correlation(self, x_i, x_f):
         raise RuntimeError("calculate_correlation not implemented")
 
 
@@ -55,6 +54,8 @@ def normalize_positions_trajectories(coms, box_size):
     '''
     coms = coere_listlike(coms)
     box_size = np.asarray(box_size) * np.ones(3)
+    if not coms.size:
+        return coms
     deltas = np.array(list(calculate_periodic_deltas(coms_i, coms_j, box_size)
                            for coms_i, coms_j in zip(coms[:-1:], coms[1::])))
     deltas = np.concatenate([[np.zeros_like(deltas[0])], deltas])
@@ -64,11 +65,11 @@ class MeanSquareDisplacementTCFExtractor(BaseTCFExtractor):
 
     def __init__(self, coms, box_size=None, **kwds):
         coms = normalize_positions_trajectories(coms, box_size)
-        super(MeanSquareTCFCalcualtor, self).__init__(coms, **kwds)
+        super(MeanSquareDisplacementTCFExtractor, self).__init__(coms, **kwds)
         self.scratch = np.zeros_like(coms[0])
         self.n = len(self.scratch)
 
-    def calculate_correlation(self, initial_coms, final_coms):
+    def calculate_a_correlation(self, initial_coms, final_coms):
         # calculate the following expression efficiently
         #   sqrt(((final_coms - initial_coms) ** 2).sum(axis=1).mean())
         scratch = self.scratch
@@ -102,14 +103,14 @@ class BaseVectorTCFCalculator(BaseTCFExtractor):
 
     def __init__(self, orientation_vectors, **kwds):
         ravel_orientation_vectors, base_shape = ravel_vector_quantities(orientation_vectors)
-        super(OrientationalTCFExtractor, self).__init__(ravel_orientation_vectors, **kwds)
+        super(BaseVectorTCFCalculator, self).__init__(ravel_orientation_vectors, **kwds)
         self.scratch = np.zeros_like(ravel_orientation_vectors[0])
         self.n_vectors = base_shape[0]
 
-    def calculate_correlation(self, initial_vectors, final_vectors):
+    def calculate_a_correlation(self, initial_vectors, final_vectors):
         # efficiently calculate mean(dot(v_i, v_f) for v_i, v_f in zip(initial_vectors, final_vectors))
-        np.multiply(initial_vectors, final_vectors, self.output)
-        return self.output.sum() / self.n_vectors
+        np.multiply(initial_vectors, final_vectors, self.scratch)
+        return self.scratch.sum() / self.n_vectors
 
 
 class OrientationalTCFExtractor(BaseVectorTCFCalculator):

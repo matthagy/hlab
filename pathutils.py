@@ -151,6 +151,8 @@ class BasePath(str):
     def __new__(cls, filepath, relative=None):
         if isinstance(filepath, cls):
             return filepath
+        if isinstance(filepath, unicode):
+            filepath = filepath.encode()
         if not isinstance(filepath, str):
             raise TypeError("cannot create %s instance from %s" % (cls.__name__, filepath))
         filepath = normpath(filepath)

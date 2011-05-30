@@ -7,6 +7,7 @@ import socket
 import random
 import time
 import atexit
+from threading import Thread, Condition
 
 DEFAULT_DELAY = 1.0
 
@@ -162,6 +163,68 @@ class LockFile(object):
 
 atexit.register(LockFile._pruneLocks)
 
-LockFile = LockFile
 islocked = LockFile.islocked
+
+
+class LockToucher(object):
+
+    def __init__(self, lockfile, touch_frequency):
+        if isinstance(lockfile, LockFile):
+            lockfile = lockfile.lockpath
+        assert isinstance(lockfile, str)
+        self.lockfile = lockfile
+        self.touch_frequency = touch_frequency
+        self.thread = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info):
+        self.stop()
+        return False
+
+    def start(self):
+        if self.thread is not None:
+            return
+        self.thread_stop = False
+        self.thread = Thread(target=self.thread_target)
+        self.condition = Condition()
+        self.thread.start()
+
+    def stop(self):
+        thread = self.thread
+        self.thread = None
+        if thread is None:
+            return
+        self.condition.acquire()
+        self.thread_stop = True
+        self.condition.notify()
+        self.condition.release()
+        thread.join()
+
+    def thread_target(self):
+        if not self.touch():
+            return
+        while True:
+            self.condition.acquire()
+            try:
+                self.condition.wait(self.touch_frequency)
+                if self.thread_stop:
+                    break
+            finally:
+                self.condition.release()
+            if not self.touch():
+                return
+
+    def touch(self):
+        try:
+            os.utime(self.lockfile, None)
+        except OSError,e:
+            #likely means file was deleted
+            return False
+        return True
+
+
+
 
