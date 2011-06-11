@@ -7,6 +7,7 @@ import socket
 import random
 import time
 import atexit
+import errno
 from threading import Thread, Condition
 
 DEFAULT_DELAY = 1.0
@@ -147,7 +148,8 @@ class LockFile(object):
             if os.path.exists(self.lockpath):
                 try: os.unlink(self.lockpath)
                 except OSError,e:
-                    raise LockError(self.filename, 'Failed to clear lock; %s' % (e,))
+                    if e.errno != errno.ENOENT:
+                        raise LockError(self.filename, 'Failed to clear lock; %s' % (e,))
             self.locked = False
 
     @classmethod
