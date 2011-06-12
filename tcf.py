@@ -54,7 +54,7 @@ def normalize_positions_trajectories(coms, box_size):
     '''
     coms = coere_listlike(coms)
     box_size = np.asarray(box_size) * np.ones(3)
-    if not coms.size:
+    if len(coms) <= 1:
         return coms
     deltas = np.array(list(calculate_periodic_deltas(coms_i, coms_j, box_size)
                            for coms_i, coms_j in zip(coms[:-1:], coms[1::])))
