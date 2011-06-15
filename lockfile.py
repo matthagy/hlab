@@ -108,7 +108,7 @@ class LockFile(object):
                     break
                 if delay > 0:
                     time.sleep(self.aquire_interval)
-                    delay -= self.aquire_interval
+                delay -= self.aquire_interval
         finally:
             tmp_path.unlink_carefully()
 
