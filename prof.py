@@ -181,14 +181,27 @@ class Distribution(Profile):
     @classmethod
     def fromseq(cls, items, prec=1):
         m = defaultdict(int)
-        items = asarray(items)
+        items = np.asarray(items)
         if prec != 1:
-            items = floor(items / prec).astype(int)
+            items = np.floor(items / prec).astype(int)
         for inx in items:
             m[inx] += 1
         if not m:
             return cls([], prec)
         return cls([m[inx] for inx in xrange(max(m)+1)], prec)
+
+    @classmethod
+    def from_weighted_seq(cls, items, weights, prec=1, naturalizer=np.floor):
+        m = defaultdict(list)
+        items = np.asarray(items)
+        if prec != 1:
+            items = naturalizer(items / prec).astype(int)
+        assert items.min() >= 0
+        for inx,weight in zip(items, weights):
+            m[inx].append(weight)
+        if not m:
+            return cls([], prec)
+        return cls([np.mean(m[inx]) if len(m[inx]) else 0 for inx in xrange(max(m)+1)], prec)
 
 
 class CorrelationFunction(object):
