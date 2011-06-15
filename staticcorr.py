@@ -15,6 +15,7 @@ from .calculated import calculated
 from .util import coere_listlike, calculate_periodic_deltas
 from .prof import Profile, Distribution
 from .extractor import BaseExtractor
+from .smooth import smooth2D
 try:
     from .chlab import (acc_periodic_rs, acc_periodic_orientation_rs, acc_rs_dtype,
                         acc_orients_dtype, acc_periodic_orient_position,
@@ -251,7 +252,7 @@ class XBaseStreamingPairCorrelationExtractor(BaseExtractor):
         return self.wrap_extraction(acc)
 
 
-def calcuclate_periodic_rs(positions, prec, max_r, box_size):
+def calculate_periodic_rs(positions, prec, max_r, box_size):
     acc_config_rs = np.zeros(1 + max_r / prec, dtype=acc_rs_dtype)
     acc_periodic_rs(acc_config_rs, 0, prec, positions, box_size)
     return acc_config_rs
@@ -260,7 +261,7 @@ class XStreamingPerodicPairCorrelationExtractor(XBaseStreamingPairCorrelationExt
 
     output_name = 'xspaircorr'
 
-    global_extraction_function = staticmethod(calcuclate_periodic_rs)
+    global_extraction_function = staticmethod(calculate_periodic_rs)
 
     @staticmethod
     def reduce_extractions(op, acc):
@@ -334,16 +335,44 @@ class XStreamingPeriodicPairOrientationExtractor(XBaseStreamingPairCorrelationEx
         return OrientationCorrelation(rs, orients)
 
 
-class PositionOrientationCorrelation(object):
+class BaseCorrelation2D(object):
 
     def __init__(self, g, prec):
+        assert g.ndim == 2
+        assert g.shape[0] == g.shape[1], 'bad shape %s' % (g.shape,)
+
         self.g = g
         self.prec = prec
 
-    def combine(self, other):
-        if not isinstance(other, PositionOrientationCorrelation):
-            raise TypeError("can only combine PositionOrientationCorrelation")
+    @property
+    def N(self):
+        return self.g.shape[0]
 
+    def combine(self, other):
+        if not isinstance(other, BaseCorrelation2D):
+            raise TypeError("can only combine BaseCorrelation2D")
+        raise RuntimeError("not completed")
+
+    def calculate_xy(self):
+        return self.prec * np.mgrid[0:self.N:, 0:self.N:]
+
+    def calculate_angular_cross_section(self, angular_precision=np.pi/32, r_min=0, r_max=None):
+        x,y = self.calculate_xy()
+        r2 = x**2 + y**2
+        w = (r2 >= r_min**2)
+        if r_max:
+            w &= r2 <= r_max**2
+        x = x[w].ravel()
+        y = y[w].ravel()
+        g = self.g[w].ravel()
+        angles = np.where(x==0, np.pi/2, np.arctan(y / (x+1e-9*self.prec)))
+        return Distribution.from_weighted_seq(angles, g, prec=angular_precision, naturalizer=np.round)
+
+    def smooth(self, kernel_size):
+        return self.__class__(smooth2D(self.g, kernel_size=kernel_size, mode='same'), self.prec)
+
+
+class PairCorrelation2D(BaseCorrelation2D):
 
     @classmethod
     def from_acc(cls, ns, prec):
@@ -392,7 +421,7 @@ def calculate_orient_position((positions, orientations), prec, max_r, box_size):
     acc_periodic_orient_position(acc, prec, positions, orientations, box_size)
     return acc
 
-class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
+class XStreamingPairCorrelation2D(XBaseStreamingPairCorrelationExtractor):
 
     global_extraction_function = staticmethod(calculate_orient_position)
 
@@ -406,19 +435,13 @@ class XStreamingOrientPositionCorrelationExtractor(XBaseStreamingPairCorrelation
         self.extract_args = self.prec, self.max_r, self.box_size
 
     def wrap_extraction(self, acc):
-        return PositionOrientationCorrelation.from_acc(acc, self.prec)
+        return PairCorrelation2D.from_acc(acc, self.prec)
 
 
 
-class PairOrientationCorrelation(object):
+class OrientationCorrelation2D(BaseCorrelation2D):
 
-    def __init__(self, g, prec):
-        assert g.ndim == 2
-        assert g.shape[0] == g.shape[1], 'bad shape %s' % (g.shape,)
-
-        self.g = g
-        self.prec = prec
-
+    pass
 
 def calculate_periodic_pair_orient((positions, orientations), prec, max_r, box_size):
     n = 1 + int(max_r // prec)
@@ -428,7 +451,8 @@ def calculate_periodic_pair_orient((positions, orientations), prec, max_r, box_s
                              prec, positions, orientations, box_size)
     return (config_n_rs, config_orients)
 
-class XStreamingOrientPositionPairCorrelationExtractor(XBaseStreamingPairCorrelationExtractor):
+
+class XStreamingOrientationCorrelation2D(XBaseStreamingPairCorrelationExtractor):
 
     global_extraction_function = staticmethod(calculate_periodic_pair_orient)
 
@@ -446,5 +470,18 @@ class XStreamingOrientPositionPairCorrelationExtractor(XBaseStreamingPairCorrela
     def wrap_extraction(self, (n_rs, orients)):
         n_rs = n_rs.copy()
         n_rs[n_rs == 0] = 1
-        return PairOrientationCorrelation(orients / n_rs, self.prec)
+        return OrientationCorrelation2D(orients / n_rs, self.prec)
 
+# old names for unpickling and deprecated class name constructors
+PositionOrientationCorrelation = PairCorrelation2D
+PairOrientationCorrelation = OrientationCorrelation2D
+
+def XStreamingOrientPositionCorrelationExtractor(*args, **kwds):
+    warnings.warn("XStreamingOrientPositionCorrelationExtractor is deprecated; use XStreamingPairCorrelation2D",
+                  DeprecationWarning, stacklevel=2)
+    return XStreamingPairCorrelation2D(*args, **kwds)
+
+def XStreamingOrientPositionPairCorrelationExtractor(*args, **kwds):
+    warnings.warn("XStreamingOrientPositionPairCorrelationExtractor is deprecated; use XStreamingOrientationCorrelation2D",
+                  DeprecationWarning, stacklevel=2)
+    return XStreamingOrientationCorrelation2D(*args, **kwds)

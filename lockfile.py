@@ -10,6 +10,8 @@ import atexit
 import errno
 from threading import Thread, Condition
 
+from .pathutils import FilePath
+
 DEFAULT_DELAY = 1.0
 
 class LockError(Exception):
@@ -33,7 +35,7 @@ class LockFile(object):
 
         self._lockFiles.append(self)
         self.locked = False
-        self.filename = filename
+        self.filename = FilePath(filename)
         self.lockpath = self.mklockpath(self.filename)
         if lid is None:
            self.lid = self.randomLid()
@@ -43,12 +45,12 @@ class LockFile(object):
             self.lock(delay)
 
     @staticmethod
-    def mklockpath(file):
-        return '%s.lock' % file
+    def mklockpath(path):
+        return FilePath('%s.lock' % path)
 
     @classmethod
     def islocked(cls, file):
-        return os.path.exists(cls.mklockpath(file))
+        return cls.mklockpath(file).exists()
 
     @classmethod
     def makecontents(cls, host, pid, lid):
@@ -77,6 +79,8 @@ class LockFile(object):
         self.unlock()
         return False
 
+    aquire_interval = 0.05
+
     def lock(self, delay=None):
         '''Aquires lock, if not already locked.
            lock([,delay=None])
@@ -90,57 +94,48 @@ class LockFile(object):
             delay = DEFAULT_DELAY
         delay = float(delay)
         if delay < 0:
-           raise ValueError('Wait must be positive, not %r' % delay)
-        lockpath = self.lockpath
+            raise ValueError('Wait must be positive, not %r' % delay)
+
         host = socket.gethostname()
         pid = os.getpid()
-
-        exists = os.path.exists
-        rename = os.rename
-        interval = 0.02
-
-        #Write to tempfile in same dir
         content = self.makecontents(host, pid, self.lid)
-        tmp = '%s_%s.%i_%s' % (lockpath,host,pid,self.lid[:40])
+        tmp_path = FilePath('%s_%s_%i_%s' % (self.lockpath,host,pid,self.lid[:40]))
 
-        def write_tmp():
-            with file(tmp,'w') as fh:
-                fh.write(content)
-
-        write_tmp()
         try:
-            while not self.locked:
-
-                if not exists(lockpath):
-                    try:
-                        rename(tmp, lockpath)
-                    except OSError:
-                        # this can happen in various odd cases that I don't understand
-                        # just try again
-                        write_tmp()
-                        continue
-                    # Ensure that my rename succeeded
-                    try:
-                        with file(lockpath) as fh:
-                            fhcontent = fh.read()
-                    except (IOError, OSError):
-                        pass
-                    else:
-                        if fhcontent == content:
-                            self.locked = True
-                            break
-
-                    write_tmp()
-
-                if delay <= 0.0:
-                    raise LockError(self.filename, 'Could not lock %s; lock exits' % (self.filename,))
-
-                time.sleep(interval)
-                delay -= interval
+            while delay >= 0.0:
+                self.attempt_aquire(content, tmp_path)
+                if self.locked:
+                    break
+                time.sleep(self.aquire_interval)
+                delay -= self.aquire_interval
         finally:
-            try: os.unlink(tmp)
-            except OSError:
-                pass
+            tmp_path.unlink_carefully()
+
+        if not self.locked:
+            raise LockError(self.filename, 'Could not lock %s; lock exits' % (self.filename,))
+
+    def attempt_aquire(self, content, tmp_path):
+        assert not self.locked
+
+        if self.lockpath.exists():
+            return
+
+        with file(tmp_path,'w') as fh:
+            fh.write(content)
+
+        try:
+            tmp_path.rename(self.lockpath)
+        except OSError:
+            return
+
+        # Ensure that my rename succeeded
+        try:
+            with file(self.lockpath) as fh:
+                fhcontent = fh.read()
+        except (IOError, OSError):
+            return
+
+        self.locked = fhcontent == content
 
     def unlock(self):
         '''Removes lockfile if we are locked'''
