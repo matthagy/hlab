@@ -117,12 +117,11 @@ class LockFile(object):
     def attempt_aquire(self, content, tmp_path):
         assert not self.locked
 
-        if self.lockpath.exists():
-            return
-
         with file(tmp_path,'w') as fh:
             fh.write(content)
 
+        if self.lockpath.exists():
+            return
         try:
             tmp_path.rename(self.lockpath)
         except OSError:
