@@ -348,9 +348,9 @@ class BaseCorrelation2D(object):
     def N(self):
         return self.g.shape[0]
 
-    def combine(self, BaseCorrelation2D):
-        if not isinstance(other, PairCorrelation2D):
-            raise TypeError("can only combine ")
+    def combine(self, other):
+        if not isinstance(other, BaseCorrelation2D):
+            raise TypeError("can only combine BaseCorrelation2D")
         raise RuntimeError("not completed")
 
     def calculate_xy(self):
@@ -370,7 +370,6 @@ class BaseCorrelation2D(object):
 
     def smooth(self, kernel_size):
         return self.__class__(smooth2D(self.g, kernel_size=kernel_size, mode='same'), self.prec)
-
 
 
 class PairCorrelation2D(BaseCorrelation2D):
