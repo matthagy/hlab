@@ -118,33 +118,27 @@ class LockFile(object):
     def attempt_aquire(self, content, tmp_path):
         assert not self.locked
 
-        with file(tmp_path,'w') as fh:
-            fh.write(content)
-
         if self.lockpath.exists():
             return
-        try:
-            tmp_path.rename(self.lockpath)
-        except OSError:
-            return
 
-        # Ensure that my rename succeeded
-        try:
-            with file(self.lockpath) as fh:
-                fhcontent = fh.read()
-        except (IOError, OSError):
-            return
+        with open(tmp_path, 'w') as fp:
+            fp.write(content)
 
-        self.locked = fhcontent == content
+        try:
+            os.link(tmp_path, self.lockpath)
+        except OSError,e:
+            if e.errno == errno.EEXIST:
+                return
+            raise
+
+        tmp_path.unlink()
+
+        self.locked = True
 
     def unlock(self):
         '''Removes lockfile if we are locked'''
         if self.locked:
-            if os.path.exists(self.lockpath):
-                try: os.unlink(self.lockpath)
-                except OSError,e:
-                    if e.errno != errno.ENOENT:
-                        raise LockError(self.filename, 'Failed to clear lock; %s' % (e,))
+            self.lockpath.unlink_carefully()
             self.locked = False
 
     @classmethod
