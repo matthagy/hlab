@@ -9,7 +9,7 @@ from .binsolve import binsolve
 from .uncertain import UncertainNumber
 
 
-def solve_free_energy(sample_A, sample_B, u_A, u_B, C_min=-100, C_max=100):
+def solve_free_energy(sample_A, sample_B, u_A, u_B, C_min=-100, C_max=100, **kwds):
     ''' sample_A - sequences of configurations sampled with potetntial A
         sample_B - sequences of configurations sampled with potetntial B
         u_A - evaluates energies for sequences of configurations (sample_x) using potential A
@@ -29,7 +29,7 @@ def solve_free_energy(sample_A, sample_B, u_A, u_B, C_min=-100, C_max=100):
     def test_C(C):
         return np.log(f(Us_A - C).mean() / f(Us_B + C).mean())
 
-    return binsolve(test_C, 0.0, C_min, C_max)
+    return binsolve(test_C, 0.0, C_min, C_max, **kwds)
 
 def fermi_diarc(x):
     return 1.0 / (1.0 + np.exp(x))
