@@ -545,7 +545,7 @@ def open_cached_locators(filepath, cache_path=None, ignore_corrupt_entries=False
     if cache_path.exists() and cache_path.mtime() > filepath.mtime():
         try:
             with open(cache_path, 'r') as cache_fp:
-                obj_locators = cache_fp.read()
+                fp.obj_locators = cache_fp.read()
         except (CorruptFile, EOFError):
             pass
         else:
