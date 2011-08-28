@@ -32,7 +32,7 @@ def temporary_directory(*args, **kwds):
 rnd_holder = '<RND>'
 
 @contextmanager
-def temp_file_proxy(path, mode='w', tmp_suffix = '~tmp~%s~' % rnd_holder, open=__builtin__.open):
+def temp_file_proxy(path, mode='w', tmp_suffix = '~tmp~%s~' % rnd_holder, open=__builtin__.open, **kwds):
     path = FilePath(path)
 
     if rnd_holder not in tmp_suffix:
@@ -49,7 +49,7 @@ def temp_file_proxy(path, mode='w', tmp_suffix = '~tmp~%s~' % rnd_holder, open=_
         raise RuntimeError("temporary file %s already exists" % (tmp_path,))
 
     try:
-        with closing(open(tmp_path, mode)) as fp:
+        with closing(open(tmp_path, mode, **kwds)) as fp:
             yield fp
         tmp_path.rename(path)
     finally:
