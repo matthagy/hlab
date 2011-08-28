@@ -14,7 +14,7 @@ from .tempfile import temp_file_proxy
 from .objstream import FileWrapper
 
 
-def open(filename, mode, dtype, **kwds):
+def open(filename, mode, dtype, truncate_corrupted=False, **kwds):
     '''open a file for writing/reading objects
        return the proper file-like object
     '''
@@ -23,6 +23,7 @@ def open(filename, mode, dtype, **kwds):
     elif mode=='w':
         return Writer(builtin_open(filename, 'wb'), dtype, **kwds)
     elif mode=='a':
+        check_for_appending(filename, dtype, truncate_corrupted)
         return Writer(builtin_open(filename, 'ab'), dtype, **kwds)
     else:
         raise ValueError('bad mode %r' % (mode,))
@@ -33,6 +34,26 @@ class FixedFileWrapper(FileWrapper):
     def __init__(self, fileobj, dtype):
         super(FixedFileWrapper, self).__init__(fileobj)
         self.dtype = np.dtype(dtype)
+
+class CorruptFile(IOError):
+    pass
+
+def check_for_appending(filename, dtype, truncate_corrupted):
+    dtype = np.dtype(dtype)
+    with builtin_open(filename, 'rb') as fp:
+        fp.seek(0, SEEK_END)
+        n_bytes = fp.tell()
+    n,extra = divmod(n_bytes, dtype.itemsize)
+
+    if not extra:
+        return
+
+    if not truncate_corrupted:
+        raise CorruptFile('extra bytes at end of file')
+
+    with builtin_open(filename, 'ab') as fp:
+        fp.seek(n_bytes - extra)
+        fp.truncate()
 
 
 class Writer(FixedFileWrapper):
