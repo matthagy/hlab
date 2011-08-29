@@ -204,6 +204,15 @@ class BasePath(str):
             return p.parent(depth-1)
         return p
 
+    def fragment(self, relative_to=None):
+        if relative_to is None:
+            relative_to = os.getcwd()
+        relative_to = self._dirklass(relative_to).abspath()
+        path = self.abspath() if self.relative else self
+
+        assert path.startswith(relative_to)
+        return self.__class__(self[len(relative_to)+1::])
+
 BasePath._dirklass = BasePath
 
 class FilePath(BasePath):
