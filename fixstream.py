@@ -39,6 +39,10 @@ class CorruptFile(IOError):
     pass
 
 def check_for_appending(filename, dtype, truncate_corrupted):
+    filename = FilePath(filename)
+    if not filename.exists():
+        return
+
     dtype = np.dtype(dtype)
     with builtin_open(filename, 'rb') as fp:
         fp.seek(0, SEEK_END)
