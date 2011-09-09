@@ -2,9 +2,11 @@
 from inspect import getargspec
 from functools import wraps
 
-def memorize(func):
 
-    cache = {}
+def memorize(func):
+    return make_wrapper(func, {})
+
+def make_wrapper(func, cache):
 
     @wraps(func)
     def wrapper(*args, **kwds):
@@ -21,6 +23,11 @@ def memorize(func):
 
     wrapper.cache = cache
     return wrapper
+
+named_caches = {}
+
+def named_memorize(name):
+    return lambda func: make_wrapper(func, named_caches.setdefault(name, {}))
 
 def parse_args(func, args, kwds):
     a = getargspec(func)
