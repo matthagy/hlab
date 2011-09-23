@@ -158,7 +158,7 @@ class Reader(FixedFileWrapper):
         start = self.normalize_index(start, 0)
         stop = self.normalize_index(stop, -1)
         count = stop - start
-        assert count > 0, 'bad count %d' % (count,)
+        assert count >= 0, 'bad count %d' % (count,)
 
         n_chunks, extra = divmod(count, chunk_size)
         for chunk_i in xrange(n_chunks):
@@ -184,17 +184,27 @@ class Reader(FixedFileWrapper):
         for index in xrange(start, stop, step):
             yield self.read_one(index)
 
+    def read_slice(self, start=0, stop=None, step=None):
+        if isinstance(start, slice):
+            return self.read_slice(start=start.start, stop=start.stop, step=start.step)
+
+        start = self.normalize_index(start, 0)
+        stop = self.normalize_index(stop, -1)
+        step = 1 if step is None else step
+
+        if step == -1:
+            return self.read_slice(stop, start, step=1)[::-1]
+        elif step == 1:
+            return np.fromiter(self.chunking_iter(start, stop), dtype=self.dtype, count=stop-start)
+        else:
+            return np.fromiter(self.stepping_iter(start, stop, step), dtype=self.dtype, count=(stop-start)//step)
+
     def __getitem__(self, item):
         if np.isscalar(item):
             return self.read_one(item)
 
         if isinstance(item, slice):
-            if item.step == 1:
-                return np.array(list(self.chunking_iter(item.start, item.step)))
-            elif item.step == -1:
-                return np.array(list(self.chunking_iter(item.stop, item.start)))[::-1]
-            else:
-                return np.array(list(self.stepping_iter(item.start, item.stop, item.step)))
+            return self.read_slice(item)
 
         base_indices = np.asarray(item)
         return np.array([self.read_batch(self.normalize_index(index), count=1)
