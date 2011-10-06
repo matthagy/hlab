@@ -28,6 +28,7 @@ import grp
 import re
 import shutil
 import errno
+from glob import glob
 
 from .util import msg
 
@@ -175,7 +176,7 @@ class BasePath(str):
         return dirname(self)
 
     def dirpath(self):
-        return self._dirklass(self.dirname())
+        return self._dir_class(self.dirname())
 
     def basename(self):
         return basename(self)
@@ -188,7 +189,7 @@ class BasePath(str):
 
     def parent(self, depth=None, klass=None):
         if klass is None:
-            klass = self._dirklass
+            klass = self._dir_class
         if depth is not None:
             if type(depth) not in [int, long]:
                 raise TypeError('depth must be an int')
@@ -207,13 +208,13 @@ class BasePath(str):
     def fragment(self, relative_to=None):
         if relative_to is None:
             relative_to = os.getcwd()
-        relative_to = self._dirklass(relative_to).abspath()
+        relative_to = self._dir_class(relative_to).abspath()
         path = self.abspath() if self.relative else self
 
         assert path.startswith(relative_to)
         return self.__class__(self[len(relative_to)+1::])
 
-BasePath._dirklass = BasePath
+BasePath._dir_class = BasePath
 
 class FilePath(BasePath):
     '''Adds in file system code'''
@@ -293,11 +294,11 @@ class DirPath(FilePath):
             if isdir(path):
                 klass = self.__class__
             else:
-                klass = self._fileklass
+                klass = self._file_class
         return klass(path, relative=self.relative)
 
     def fchild(self, jpath):
-        return self.child(jpath, klass=self._fileklass)
+        return self.child(jpath, klass=self._file_class)
     def dchild(self, jpath):
         return self.child(jpath, klass=self.__class__)
 
@@ -352,6 +353,11 @@ class DirPath(FilePath):
     def __iter__(self):
         return self.itercontents()
 
-FilePath._dirklass = DirPath
-DirPath._fileklass = FilePath
+    def glob(self, pattern):
+        for path in glob(self + pathsep + pattern.lstrip(pathsep)):
+            yield self._dir_class(path) if isdir(path) else self._file_class(path)
+
+
+FilePath._dir_class = DirPath
+DirPath._file_class = FilePath
 
