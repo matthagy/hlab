@@ -212,7 +212,7 @@ class BasePath(str):
         path = self.abspath() if self.relative else self
 
         assert path.startswith(relative_to)
-        return self.__class__(self[len(relative_to)+1::])
+        return self.__class__(path[len(relative_to)+1::])
 
 BasePath._dir_class = BasePath
 
