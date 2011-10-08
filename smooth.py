@@ -63,4 +63,4 @@ def gauss_kern2D(size, sizey=None):
 def smooth2D(x, kernel_size, mode='same'):
     # delay loading as scipy takes a long time to load and isn't always needed
     from scipy import signal
-    return signal.convolve(x, gauss_kern2D(kernel_size), mode=mode, old_behavior=False)
+    return signal.convolve(x, gauss_kern2D(kernel_size), mode=mode)#, old_behavior=False)

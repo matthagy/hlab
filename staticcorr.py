@@ -81,6 +81,31 @@ class PairCorrelation(PairProfile):
     def r_max(self):
         return self.indices[where(self.g == self.g.max())][0]
 
+    def calculate_Sk(self, ks, rho):
+        r = self.r
+        g = self.g
+        dr = self.prec
+        v_shell = 4 / 3.0 * np.pi * (r**3 - (r-dr)**3)
+        n_shell = rho * v_shell * g
+
+        kr = ks[np.newaxis, ::] * (r[::, np.newaxis] + 0.5 * dr)
+        sin_int = (n_shell[::, np.newaxis] * np.sin(kr)/kr).sum(axis=0)
+
+        R_c = r[-1]
+        cos_int = R_c * rho*4*np.pi * np.cos(ks * R_c) / ks**2
+
+        return 1 + sin_int + cos_int
+
+    def calculate_fourier_h(self, ks, rho, h=None):
+        if h is None:
+            h = self.h
+        r = self.r
+        return 4*np.pi*rho/ks * np.trapz(np.sin(ks[np.newaxis,::] *
+                                             r[::,np.newaxis]) *
+                                      r[::,np.newaxis] * h[::,np.newaxis],
+                                      x=r, axis=0)
+
+
 
 class PairCorrelationExtractor(BaseExtractor):
 

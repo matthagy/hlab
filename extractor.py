@@ -29,5 +29,7 @@ class BaseExtractor(object):
             self.report_info(inx, N, value)
 
     def report_info(self, inx, N, value):
-        self.msg('%d of %d in %s', inx+1, N, self.output_name)
+        self.msg('%d of %s in %s', inx+1,
+                 N if N is not None else '<unkown>',
+                 self.output_name)
 
