@@ -12,7 +12,7 @@ from threading import Thread, Condition
 
 from .pathutils import FilePath
 
-DEFAULT_DELAY = 1.0
+DEFAULT_DELAY = 0.0
 
 class LockError(Exception):
     pass
