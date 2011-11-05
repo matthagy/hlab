@@ -41,3 +41,14 @@ def parse_args(func, args, kwds):
                                                (a.defaults or ())))
     return pos_args, star_args, star_kwds
 
+def args_memorize(func):
+    @wraps(func)
+    def wrapper(*args):
+        try:
+            return cache[args]
+        except KeyError:
+            result = cache[args] = func(*args)
+            return result
+
+    wrapper.cache = cache = {}
+    return wrapper
