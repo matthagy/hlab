@@ -28,7 +28,7 @@ import grp
 import re
 import shutil
 import errno
-from glob import glob
+from glob import iglob
 
 from .util import msg
 
@@ -354,7 +354,7 @@ class DirPath(FilePath):
         return self.itercontents()
 
     def glob(self, pattern):
-        for path in glob(self + pathsep + pattern.lstrip(pathsep)):
+        for path in iglob(self + pathsep + pattern.lstrip(pathsep)):
             yield self._dir_class(path) if isdir(path) else self._file_class(path)
 
 
