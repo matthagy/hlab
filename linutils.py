@@ -19,7 +19,7 @@ def vnorm(v): return v / vlen(v)
 
 def vperp(r, orient):
     d = np.dot(r, orient)
-    return vnorm((orient - d * r)) if not epsilon_eq(d, 1, 1e-9) else orient
+    return vnorm((orient - d * r)) if abs(d-1) > 1e-9 else orient
 
 def canonical_norm(_v):
     v = vnorm(_v)
@@ -81,17 +81,17 @@ def colinear(a, b):
 
 def signed_angle_between_unit_vecs(va, vb, unit_axis):
     d = np.dot(va, vb)
-    if epsilon_eq(d, 1.0, 1e-6):
+    if abs(1.0 - d) < 1e-6:
         return 0
-    elif epsilon_eq(d, -1, 1e-6):
+    elif abs(-1.0 - d) < 1e-6:
         return np.pi
     if colinear(va, unit_axis) or colinear(vb, unit_axis):
         return 0
     theta = np.arccos(d)
-    if epsilon_eq(theta, np.pi, theta_epsilon):
+    if abs(theta - np.pi) < theta_epsilon:
         return np.pi
     dd = np.dot(vnorm(np.cross(va,vb)), unit_axis)
-    assert epsilon_eq(abs(dd), 1.0), 'bad axis %s for angle between %s and %s' % (unit_axis, va, vb)
+    assert abs(abs(dd) - 1.0) < 1e-4, 'bad axis %s for angle between %s and %s' % (unit_axis, va, vb)
     if dd<0: theta = -theta
     assert -np.pi<=theta<=np.pi
     return theta
