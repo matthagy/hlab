@@ -560,4 +560,12 @@ def open_cached_locators(filepath, cache_path=None, ignore_corrupt_entries=False
     return fp
 
 
+def fix_objstream(path, pickle_protocol=2):
+    '''truncates corrupt entries at the end of an objstream
+    '''
+    with open(path) as in_fp:
+        with temp_file_proxy(path, 'w', open=open) as out_fp:
+            out_fp.pickle_protocol = pickle_protocol
 
+            for op in in_fp:
+                out_fp.write(op)
