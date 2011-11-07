@@ -22,6 +22,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 
+import sys
 import cPickle as pickle
 import zlib
 import bz2
@@ -274,6 +275,8 @@ class ObjectLocator(object):
                 obj = pickle.load(fileobj)
             except EOFError:
                 self.eof_error()
+            except ValueError,e:
+                self.value_error(e)
             assert fileobj.tell() - start == self.size
             return obj
         else:
@@ -281,12 +284,19 @@ class ObjectLocator(object):
             if len(bytes) != self.size:
                 assert len(bytes) < self.size
                 self.eof_error()
-            return pickle.loads(self.compressor.decompress_func(bytes))
+            try:
+                return pickle.loads(self.compressor.decompress_func(bytes))
+            except ValueError, e:
+                self.value_error(e)
 
     @staticmethod
     def eof_error():
         #shouldn't ever be called due to sanity checks when reading locators
         raise CorruptFile("EOF when reading object")
+
+    @staticmethod
+    def value_error(e):
+        raise CorruptFile(str(e))
 
 
 class Reader(FileWrapper):
@@ -560,12 +570,34 @@ def open_cached_locators(filepath, cache_path=None, ignore_corrupt_entries=False
     return fp
 
 
-def fix_objstream(path, pickle_protocol=2):
+def fix_objstream(path, pickle_protocol=2, verbose=False):
     '''truncates corrupt entries at the end of an objstream
     '''
-    with open(path) as in_fp:
-        with temp_file_proxy(path, 'w', open=open) as out_fp:
-            out_fp.pickle_protocol = pickle_protocol
+    splice_objstream(path, indices=None, out_path=path,
+                     ignore_corrupt_entries=True,
+                     pickle_protocol=pickle_protocol, verbose=verbose)
 
-            for op in in_fp:
-                out_fp.write(op)
+def splice_objstream(in_path, indices=None, out_path=None, pickle_protocol=2, verbose=False, ignore_corrupt_entries=False):
+    if isinstance(indices, (int,long)):
+        indices = xrange(indices)
+
+    if out_path is None:
+        out_path = in_path
+
+    with temp_file_proxy(out_path, 'w', open=open) as out_fp:
+        out_fp.pickle_protocol = pickle_protocol
+
+        with open(in_path) as in_fp:
+            in_fp.ignore_corrupt_entries = ignore_corrupt_entries
+
+            try:
+                for op in (iter(in_fp) if indices is None else (in_fp[i] for i in indices)):
+                    if verbose:
+                        print '.',
+                        sys.stdout.flush()
+                    out_fp.write(op)
+            except CorruptFile:
+                pass
+
+            if verbose:
+                print
