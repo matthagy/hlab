@@ -1,4 +1,4 @@
-'''
+'''Utilties for locking exclusive access to a file path.
 '''
 
 import sys
@@ -9,6 +9,7 @@ import time
 import atexit
 import errno
 from threading import Thread, Condition
+from contextlib import contextmanager
 
 from .pathutils import FilePath
 
@@ -17,59 +18,73 @@ DEFAULT_DELAY = 0.0
 class LockError(Exception):
     pass
 
+class LockAquireFailed(LockError):
+    pass
+
+@contextmanager
+def ignore_exist_error():
+    try:
+        yield
+    except OSError,e:
+        if e.errno != errno.EEXIST:
+            raise
 
 class LockFile(object):
 
-    #List of all lock files for process
-    #Cleared in atexit
-    _lockFiles = []
+    # List of all lock files for this process
+    # Cleared in atexit
+    _lock_files = []
 
     def __init__(self, filename, delay=None, aquire=True, lid=None):
         '''Create a lock file (filename [,delay=None] [,aquire=True], [lid=None])
                filename - Path of file to lock
-               delay - Seconds to delay for lock if auqire (defaults to DEFAULT_DELAY)
-               aquire - Should I attempt to aquire lock immediatley?
-               lid -  Lock ID (Resoure identifier string)
-                      Generated randomly by default
+               delay - Seconds to wait for lock if already aquired (defaults to DEFAULT_DELAY)
+               aquire - Whether to aquire lock at creation of LockFile
+               lid -  Lock ID (Resoure identifier string) Generated randomly by default
         '''
 
-        self._lockFiles.append(self)
+        # should add a thread lock for this operation (see _prune_locks)
+        self._lock_files.append(self)
+
         self.locked = False
         self.filename = FilePath(filename)
-        self.lockpath = self.mklockpath(self.filename)
+        self.lockpath = self.make_lock_path(self.filename)
         if lid is None:
-           self.lid = self.randomLid()
+           self.lid = self.make_random_lock_id()
         else:
            self.lid = str(lid)
         if aquire:
             self.lock(delay)
 
     @staticmethod
-    def mklockpath(path):
+    def make_lock_path(path):
         return FilePath('%s.lock' % path)
 
     @classmethod
-    def islocked(cls, file):
-        return cls.mklockpath(file).exists()
+    def is_locked(cls, file):
+        return cls.make_lock_path(file).exists()
 
     @classmethod
-    def makecontents(cls, host, pid, lid):
+    def make_contents(cls, host, pid, lid):
         return '%s.%i.%s' % (host,pid,lid)
 
     @classmethod
-    def readlock(cls, filename):
-        lockpath = cls.mklockpath(filename)
+    def read_lock(cls, filename):
+        lockpath = cls.make_lock_path(filename)
         line = file(lockpath).readline().strip()
         host,pid,lid = line.split('.',2)
         pid = int(pid)
         return host,pid,lid
 
     @staticmethod
-    def randomLid():
+    def make_random_lock_id():
         return '%x' % random.randrange(1L<<100)
 
     def __str__(self):
-        return self.lockpath
+        return repr(self)
+
+    def __repr__(self):
+        return '%s(%r)' % (self.__class__.__name__, str(self.filename))
 
     def __enter__(self):
         self.lock()
@@ -88,41 +103,46 @@ class LockFile(object):
                        Defaults to DEFAULT_DELAY
         '''
 
-        if self.locked:
-            return
         if delay is None:
             delay = DEFAULT_DELAY
-        delay = float(delay)
-        if delay < 0:
-            raise ValueError('Wait must be positive, not %r' % delay)
+        remaining_delay = float(delay)
+        if remaining_delay < 0:
+            raise ValueError('delay must be positive, not %r' % remaining_delay)
+
+        if self.locked:
+            return
 
         host = socket.gethostname()
         pid = os.getpid()
-        content = self.makecontents(host, pid, self.lid)
-        tmp_path = FilePath('%s_%s_%i_%s' % (self.lockpath,host,pid,self.lid[:40]))
+        content = self.make_contents(host, pid, self.lid)
+        tmp_path = FilePath('%s_%s_%i_%s' % (self.lockpath, host, pid, self.lid[:40]))
+        assert not tmp_path.exists()
 
         try:
-            while delay >= 0.0:
-                self.attempt_aquire(content, tmp_path)
-                if self.locked:
+            first_pass = True
+            while 1:
+                self.attempt_aquire(content, tmp_path, first_pass)
+                if (self.locked or remaining_delay <= 0.0):
                     break
-                if delay > 0:
-                    time.sleep(self.aquire_interval)
-                delay -= self.aquire_interval
+                first_pass = False
+                time.sleep(self.aquire_interval)
+                remaining_delay -= self.aquire_interval
         finally:
             tmp_path.unlink_carefully()
 
         if not self.locked:
-            raise LockError(self.filename, 'Could not lock %s; lock exits' % (self.filename,))
+            raise LockAquireFailed(self.filename, 'Could not lock %s; lock exits' % (self.filename,))
 
-    def attempt_aquire(self, content, tmp_path):
+    def attempt_aquire(self, content, tmp_path, first_pass):
         assert not self.locked
 
+        # check if someone else already aquired lock
         if self.lockpath.exists():
             return
 
-        with open(tmp_path, 'w') as fp:
-            fp.write(content)
+        if first_pass:
+            with open(tmp_path, 'w') as fp:
+                fp.write(content)
 
         try:
             os.link(tmp_path, self.lockpath)
@@ -131,7 +151,7 @@ class LockFile(object):
                 return
             raise
 
-        tmp_path.unlink()
+        #tmp_path.unlink()
 
         self.locked = True
 
@@ -142,22 +162,28 @@ class LockFile(object):
             self.locked = False
 
     @classmethod
-    def _pruneLocks(cls):
-        while cls._lockFiles:
-            locks = cls._lockFiles[:]
-            del cls._lockFiles[:]
+    def _prune_locks(cls):
+        # should add a thread lock for this portion of code
+        # can have issues if locks are added while this code is running
+        while cls._lock_files:
+            locks = cls._lock_files[::]
+            del cls._lock_files[::]
             for lock in locks:
                 try:
                     lock.unlock()
                 except LockError,e:
-                    print >>sys.stderr,str(e)
+                    print >>sys.stderr, str(e)
 
-atexit.register(LockFile._pruneLocks)
+atexit.register(LockFile._prune_locks)
 
-islocked = LockFile.islocked
+is_locked = LockFile.is_locked
 
 
 class LockToucher(object):
+    """Touches a LockFile's lock at a specific interval.
+       Used to know which locks are still active and which locks
+       can be associated with a process that died without proper cleanup.
+    """
 
     def __init__(self, lockfile, touch_frequency):
         if isinstance(lockfile, LockFile):
