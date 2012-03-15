@@ -238,6 +238,14 @@ class FilePath(BasePath):
     def mtime(self):
         return os.path.getmtime(self)
 
+    def newer_than(self, other):
+        if not isinstance(other, FilePath):
+            other = FilePath(other)
+        try:
+            return self.mtime() > other.mtime()
+        except OSError:
+            return False
+
     def abspath(self):
         if not self.relative:
             return self
