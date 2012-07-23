@@ -290,6 +290,10 @@ class FilePath(BasePath):
     def open(self, flags='r'):
         return open(self, flags)
 
+    def touch(self, times=None):
+        with file(self, 'a'):
+            os.utime(self, times)
+
 class DirPath(FilePath):
 
     def child(self, jpath, klass=None):
